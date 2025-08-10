@@ -1,0 +1,55 @@
+services:
+  ex_search:
+    build: ./
+    ports:
+      - "8060:8060"
+    volumes:
+      - ./ex_search:/app/ex_search
+      - ./data/db:/app/db
+      - ./data/log:/app/log
+    depends_on:
+      - redis
+      - celery_worker
+      - selenium
+  selenium:
+    container_name: selenium-chrome
+    image: selenium/standalone-chrome
+    ports:
+      - "4444:4444"
+      - "5900:5900"
+      - "7900:7900"
+    shm_size: "2gb"
+    ulimits:
+      nofile:
+        soft: 32768
+        hard: 32768
+  redis:
+    image: redis:latest
+    container_name: redis_broker
+    ports:
+      - "6379:6379"
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: celery_worker
+    command: celery -A tasks worker --loglevel=info --concurrency=1
+    volumes:
+      - ./ex_search:/app/ex_search
+      - ./data/db:/app/db
+      - ./data/log:/app/log
+    depends_on:
+      - redis
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: celery_flower
+    command: celery -A tasks flower --address=0.0.0.0 --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./ex_search:/app/ex_search
+    depends_on:
+      - redis
+      - celery_worker
