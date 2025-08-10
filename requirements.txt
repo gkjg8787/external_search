@@ -7,5 +7,3 @@ bs4
 selenium
 aiosqlite
 structlog
-celery[redis]
-flower

@@ -27,4 +27,8 @@ ENV PATH /app/venv/bin:$PATH
 
 COPY . .
 
+EXPOSE 8060
+
 WORKDIR /app/ex_search
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0"]
