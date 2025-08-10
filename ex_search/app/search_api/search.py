@@ -4,6 +4,7 @@ from enum import Enum
 from datetime import datetime, timezone, timedelta
 import uuid
 import time
+import asyncio
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +58,7 @@ async def wait_until_activitylog_is_available(
             return False, "Task cancelled by client"
         if timeout < time.perf_counter() - start_time:
             return False, "timeout"
-        time.sleep(wait_time)
+        await asyncio.sleep(wait_time)
 
     return True, ""
 

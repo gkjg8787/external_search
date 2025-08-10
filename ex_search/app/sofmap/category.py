@@ -1,4 +1,5 @@
 import time
+import asyncio
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,21 +21,22 @@ from .constants import (
 )
 
 
-def dl_sofmap_top(
+async def dl_sofmap_top(
     url: str, max_retries: int = 2, delay_seconds: int = 1, timeout: int = 4
 ):
-    for attempt in range(max_retries + 1):
-        try:
-            res = httpx.get(url, timeout=timeout)
-            res.raise_for_status()
-            return res.text
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            if attempt < max_retries:
-                time.sleep(delay_seconds)
-            else:
+    async with httpx.AsyncClient() as client:
+        for attempt in range(max_retries + 1):
+            try:
+                res = await client.get(url, timeout=timeout)
+                res.raise_for_status()
+                return res.text
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                if attempt < max_retries:
+                    await asyncio.sleep(delay_seconds)
+                else:
+                    raise e
+            except Exception as e:
                 raise e
-        except Exception as e:
-            raise e
 
 
 def convert_categoryresult_to_categorydomain(
@@ -53,7 +55,7 @@ async def create_category_data(ses: AsyncSession):
         url, repository: cate_repo.ICategoryRepository, entity_type: str
     ):
         try:
-            top_text = dl_sofmap_top(url=url)
+            top_text = await dl_sofmap_top(url=url)
             cp = CategoryParser(html_str=top_text)
             cp.execute()
             category_list = convert_categoryresult_to_categorydomain(
