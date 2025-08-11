@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, Query
+from pydantic import BaseModel, Field
 
 
 class SearchRequest(BaseModel):

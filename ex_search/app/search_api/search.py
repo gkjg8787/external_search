@@ -1,117 +1,40 @@
 from typing import Callable
 from urllib.parse import urlparse
-from enum import Enum
 from datetime import datetime, timezone, timedelta
 import uuid
-import time
-import asyncio
 
-from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import tasks as celery_tasks
 from common import read_config
 from domain.schemas.search import SearchRequest, SearchResponse
 from domain.models.cache import cache as c_cache, command as c_cmd, enums as c_enums
 from databases.sql.cache import repository as c_repo
 from domain.models.activitylog import enums as act_enums
-from app.sofmap.web_scraper import (
-    get_html as sofmap_download,
-    parse_html as parse_sofmap,
-    ScrapeCommand as SofmapScrapeCommand,
-    is_akiba_sofmap,
-)
+from app.sofmap.web_scraper import parse_html as parse_sofmap
+
 from app.sofmap.model_convert import ModelConverter
 from app.sofmap import urlgenerate as sofmap_urlgenerate, category as sofmap_category
 from app.activitylog.update import UpdateActivityLog
-from app.activitylog.util import is_updating_url
-from . import error as search_err
+from .enums import SuppoertedDomain, SupportedSiteName, ActivityName
 
-
-class SuppoertedDomain(Enum):
-    SOFMAP = "www.sofmap.com"
-    A_SOFMAP = "a.sofmap.com"
-
-
-class SupportedSiteName(Enum):
-    SOFMAP = "sofmap"
-
-
-class ActivityName(Enum):
-    SearchClient = "searchclient"
-
-
-async def wait_until_activitylog_is_available(
-    fastapireq: Request,
-    upactlog: UpdateActivityLog,
-    activity_types: list[str] = [],
-    target_table: str = "",
-    wait_time: float = 1.5,
-    timeout: float = 10,
-):
-    start_time = time.perf_counter()
-    while not await is_updating_url(
-        updateactlog=upactlog,
-        activity_types=activity_types,
-        target_table=target_table,
-    ):
-        if await fastapireq.is_disconnected():
-            return False, "Task cancelled by client"
-        if timeout < time.perf_counter() - start_time:
-            return False, "timeout"
-        await asyncio.sleep(wait_time)
-
-    return True, ""
+DL_TIMEOUT = 60
 
 
 class SearchClient:
     session: AsyncSession
-    fastapirequest: Request
     searchrequest: SearchRequest
     caller_type: str
 
     def __init__(
         self,
         ses: AsyncSession,
-        request: Request,
         searchrequest: SearchRequest,
         caller_type: str = "",
     ):
         self.session = ses
-        self.fastapirequest = request
         self.searchrequest = searchrequest
         self.caller_type = caller_type
-
-    async def _wait_create_activitylog(
-        self, upactlog: UpdateActivityLog, target_table: str, retry: int = 6
-    ):
-        retry_cnt = 0
-        while True:
-            ok, msg = await wait_until_activitylog_is_available(
-                fastapireq=self.fastapirequest,
-                upactlog=upactlog,
-                activity_types=[ActivityName.SearchClient.value],
-                target_table=target_table,
-            )
-            if ok:
-                tasklog = await upactlog.create(
-                    target_id=str(uuid.uuid4()),
-                    target_table=target_table,
-                    activity_type=ActivityName.SearchClient.value,
-                    caller_type=self.caller_type,
-                )
-                if tasklog:
-                    return tasklog, ""
-            elif await self.fastapirequest.is_disconnected():
-                raise search_err.DisconnectedError(
-                    "Client disconnected, canceling task"
-                )
-            else:
-                retry_cnt += 1
-                if retry < retry_cnt:
-                    raise search_err.RetryError(
-                        f"retry count max to create activitylog : {retry}"
-                    )
-                continue
 
     async def execute(self) -> SearchResponse:
         searchrequest: SearchRequest = self.searchrequest
@@ -132,15 +55,15 @@ class SearchClient:
                 return SearchResponse(error_msg=str(e))
 
         parsed_url = urlparse(searchrequest.url)
-        try:
-            tasklog, msg = await self._wait_create_activitylog(
-                upactlog=upactlog,
-                target_table=parsed_url.netloc,
-            )
-        except Exception as e:
-            return SearchResponse(error_msg=str(e))
+        tasklog = await upactlog.create(
+            target_id=str(uuid.uuid4()),
+            target_table=parsed_url.netloc,
+            activity_type=ActivityName.SearchClient.value,
+            caller_type=self.caller_type,
+        )
+
         if not tasklog:
-            return SearchResponse(error_msg=str(msg))
+            return SearchResponse(error_msg=f"task is not created")
 
         tasklog_id = tasklog.id
         ok, result = await self._download_html()
@@ -170,12 +93,13 @@ class SearchClient:
                 cache_expires = datetime.now(timezone.utc) + timedelta(
                     seconds=cacheopts.expires
                 )
-                await self._set_search_cache(searchcache=result, expires=cache_expires)
+                result.expires = cache_expires
+                await self._set_search_cache(searchcache=result)
         await upactlog.completed(id=tasklog_id)
         return response
 
     async def _get_search_cache(self) -> c_cache.SearchCache | None:
-        repo = c_repo.SearchCacheRepository(ses=self.ses)
+        repo = c_repo.SearchCacheRepository(ses=self.session)
         now = datetime.now(timezone.utc)
         results = await repo.get(
             command=c_cmd.SearchCacheGetCommand(
@@ -189,33 +113,23 @@ class SearchClient:
     async def _set_search_cache(
         self,
         searchcache: c_cache.SearchCache,
-        expires: datetime,
     ):
-        searchcache.expires = expires
-        repo = c_repo.SearchCacheRepository(ses=self.ses)
+        repo = c_repo.SearchCacheRepository(ses=self.session)
         await repo.save(data=searchcache)
 
     async def _download_html(self):
         searchrequest = self.searchrequest
         parsed_url = urlparse(searchrequest.url)
         searchcache = await self._get_search_cache()
-        if not searchcache and searchcache.download_text:
+        if searchcache and searchcache.download_text:
             return True, searchcache
         else:
-            seleniumopt = read_config.get_selenium_options()
             match parsed_url.netloc:
                 case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
-                    sofmapopt = read_config.get_sofmap_options()
-                    ok, result = await sofmap_download(
-                        command=SofmapScrapeCommand(
-                            url=searchrequest.url,
-                            is_ucaa=is_akiba_sofmap(searchrequest.url),
-                            async_session=self.session,
-                            page_load_timeout=sofmapopt.selenium.page_load_timeout,
-                            tag_wait_timeout=sofmapopt.selenium.tag_wait_timeout,
-                            selenium_url=seleniumopt.remote_url,
-                        )
-                    )
+                    dl_task = celery_tasks.sofmap_dl_task.delay(searchrequest.url)
+                    ok, result = dl_task.get(timeout=DL_TIMEOUT)
+                    if not ok:
+                        return False, result
                     searchcache = c_cache.SearchCache(
                         domain=parsed_url.netloc,
                         url=searchrequest.url,
@@ -263,13 +177,13 @@ class KeyWordToURL:
                     category_name = searchrequest.options.get("category")
                     if not any_params.get("gid") and category_name:
                         gid = await sofmap_category.get_category_id(
-                            ses=self.ses,
+                            ses=self.session,
                             is_akiba=any_params.get("is_akiba", False),
                             category_name=category_name,
                         )
                         if gid:
                             any_params["gid"] = gid
-                    params = any_params | int_params
+                    params = params | any_params | int_params
                 return sofmap_urlgenerate.build_search_url(**params)
             case _:
                 raise ValueError(

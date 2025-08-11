@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 from databases.sql.util import get_async_session
@@ -17,17 +17,14 @@ CALLER_TYPE = "api.search"
     description="渡された値から対象のURLの価格情報を返します。",
 )
 async def api_get_search_result(
-    request: Request,
     searchreq: SearchRequest,
-    db: Session = Depends(get_async_session),
+    db: AsyncSession = Depends(get_async_session),
 ):
     if not searchreq.url and not searchreq.search_keyword:
         raise HTTPException(
             status_code=404, detail="URL or search keyword is required."
         )
-    client = SearchClient(
-        ses=db, request=request, searchrequest=searchreq, caller_type=CALLER_TYPE
-    )
+    client = SearchClient(ses=db, searchrequest=searchreq, caller_type=CALLER_TYPE)
     try:
         response = await client.execute()
     except Exception as e:

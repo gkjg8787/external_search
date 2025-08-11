@@ -13,7 +13,7 @@ class SearchCacheRepository(repository.ISearchCacheRepository):
     async def save(self, data: cache.SearchCache):
         ses = self.session
         if not data.id:
-            await ses.add(data)
+            ses.add(data)
             await ses.commit()
             await ses.refresh(data)
             return

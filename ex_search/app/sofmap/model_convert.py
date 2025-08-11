@@ -15,6 +15,10 @@ class ModelConverter:
             new_results = results
         searchresults = search.SearchResults()
         for parseresult in new_results.results:
+            if parseresult.used_list_url:
+                sub_urls = [parseresult.used_list_url]
+            else:
+                sub_urls = None
             searchresult = search.SearchResult(
                 title=parseresult.title,
                 price=parseresult.price,
@@ -28,7 +32,7 @@ class ModelConverter:
                 image_url=parseresult.image_url,
                 stock_msg=parseresult.stock_msg,
                 stock_quantity=parseresult.stock_quantity,
-                sub_urls=parseresult.used_list_url,
+                sub_urls=sub_urls,
                 shops_with_stock=parseresult.shops_with_stock,
                 others={
                     "point": parseresult.point,

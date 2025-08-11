@@ -31,4 +31,4 @@ EXPOSE 8060
 
 WORKDIR /app/ex_search
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8060"]
