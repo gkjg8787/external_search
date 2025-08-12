@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 import settings
@@ -30,12 +32,27 @@ class DataBaseOptions(BaseModel):
     a_sync: SQLParams
 
 
+class RedisOptions(BaseModel):
+    host: str
+    port: int
+    db: int
+
+
 class LogOptions(BaseModel):
     directory_path: str
 
 
+CACHE_BACKEND_LITERAL = Literal["redis", "sql"]
+
+
 class CacheOptions(BaseModel):
-    expires: int | None = Field(ge=1, le=60 * 60 * 24)
+    expires: int | None = Field(ge=1, le=86400)
+    backend: CACHE_BACKEND_LITERAL = Field(default="sql")
+
+
+class DownloadWaitTimeOptions(BaseModel):
+    timeout_for_each_url: int = Field(ge=1, le=3600)
+    wait_time_util_downloadable: int = Field(ge=1, le=86400)
 
 
 def to_lower_keys(obj):
@@ -69,6 +86,11 @@ def get_databases():
     return DataBaseOptions(**lower_key_dict)
 
 
+def get_redis_options():
+    lower_key_dict = to_lower_keys(settings.REDIS_OPTIONS)
+    return RedisOptions(**lower_key_dict)
+
+
 def get_log_options():
     lower_key_dict = to_lower_keys(settings.LOG_OPTIONS)
     return LogOptions(**lower_key_dict)
@@ -77,3 +99,8 @@ def get_log_options():
 def get_cache_options():
     lower_key_dict = to_lower_keys(settings.CACHE_OPTIONS)
     return CacheOptions(**lower_key_dict)
+
+
+def get_download_waittime_options():
+    lower_key_dict = to_lower_keys(settings.DOWNLOAD_WAITTIME_OPTIONS)
+    return DownloadWaitTimeOptions(**lower_key_dict)

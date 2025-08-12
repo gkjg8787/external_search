@@ -22,17 +22,3 @@ async def get_activitylog_latest(
         return None
     lastest_actlog = max(db_actlogs, key=lambda log: log.updated_at)
     return lastest_actlog
-
-
-async def is_updating_url(
-    updateactlog: UpdateActivityLog, activity_types: list, target_table: str = ""
-):
-    db_actlog = await get_activitylog_latest(
-        upactivitylog=updateactlog,
-        activity_types=activity_types,
-        current_states=[act_enums.UpdateStatus.IN_PROGRESS.name],
-        target_table=target_table,
-    )
-    if not db_actlog:
-        return False
-    return True

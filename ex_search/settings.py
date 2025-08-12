@@ -11,7 +11,11 @@ DATABASES = {
         "database": f"{BASE_DIR}/db/database.db",
     },
 }
-
+REDIS_OPTIONS = {
+    "host": "redis",
+    "port": 6379,
+    "db": 0,
+}
 SELENIUM_OPTIONS = {
     "REMOTE_URL": "http://selenium:4444/wd/hub",
 }
@@ -24,4 +28,9 @@ SOFMAP_OPTIONS = {
 LOG_OPTIONS = {"directory_path": f"{BASE_DIR}/log/"}
 CACHE_OPTIONS = {
     "expires": 300,
+    "backend": "redis",
+}
+DOWNLOAD_WAITTIME_OPTIONS = {
+    "timeout_for_each_url": 60,
+    "wait_time_util_downloadable": 300,
 }
