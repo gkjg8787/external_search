@@ -22,7 +22,7 @@ from app.sofmap.web_scraper import parse_html as parse_sofmap
 from app.sofmap.model_convert import ModelConverter
 from app.sofmap import urlgenerate as sofmap_urlgenerate, category as sofmap_category
 from app.activitylog.update import UpdateActivityLog
-from .enums import SuppoertedDomain, SupportedSiteName, ActivityName
+from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
 from .repository import URLDomainCacheRepository
 
 CYCLE_WAIT_TIME = 1.5
@@ -144,23 +144,47 @@ class SearchClient:
         repository: URLDomainCacheRepository,
         wait_time_util_downloadable: int,
     ):
-        cached_date = await repository.get(domain)
-        if not cached_date:
+        cached_data = await repository.get(domain)
+        if not cached_data:
             return True, ""
-        if not isinstance(cached_date, datetime):
-            raise ValueError(f"cached_date is not datetime, {cached_date}")
+        if cached_data.get("updated_at") and not isinstance(
+            cached_data["updated_at"], datetime
+        ):
+            raise ValueError(f"cached_date has not datetime, {cached_data}")
 
         wait_start_time = time.perf_counter()
+
+        def is_timeout(wait_start_time):
+            return time.perf_counter() - wait_start_time > wait_time_util_downloadable
+
         while True:
-            now = datetime.now(timezone.utc) - cached_date
+            cached_data = await repository.get(domain)
+            if not cached_data:
+                return True, ""
+            if (
+                cached_data.get("status")
+                and cached_data["status"] == URLDomainStatus.DOWNLOADING.value
+            ):
+                await asyncio.sleep(CYCLE_WAIT_TIME)
+                if is_timeout(wait_start_time):
+                    return (
+                        False,
+                        f"time out, The time to wait for the update to finish has expired."
+                        f"cache updated_at:{cached_data.get('updated_at')}"
+                        f" wait_time_util_dl:{wait_time_util_downloadable}"
+                        f" status:{cached_data.get('status')}",
+                    )
+                continue
+            cached_update = cached_data.get("updated_at")
+            now = datetime.now(timezone.utc) - cached_update
             if int(now.total_seconds()) > CYCLE_WAIT_TIME:
                 return True, ""
             await asyncio.sleep(CYCLE_WAIT_TIME)
-            if time.perf_counter() - wait_start_time > wait_time_util_downloadable:
+            if is_timeout(wait_start_time):
                 return (
                     False,
                     f"time out, The time to wait for the update to finish has expired."
-                    f"cache updated_at:{cached_date}"
+                    f"cache updated_at:{cached_data.get('updated_at')}"
                     f" wait_time_util_dl:{wait_time_util_downloadable}"
                     f" diff_time:{now.total_seconds()}",
                 )
@@ -181,6 +205,9 @@ class SearchClient:
             )
             if not ok:
                 return False, msg
+            await domainrepo.save(
+                domain=parsed_url.netloc, status=URLDomainStatus.DOWNLOADING.value
+            )
             match parsed_url.netloc:
                 case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
                     dl_task = celery_tasks.sofmap_dl_task.delay(searchrequest.url)
@@ -189,7 +216,9 @@ class SearchClient:
                     )
                     if not ok:
                         return False, result
-                    await domainrepo.save(domain=parsed_url.netloc)
+                    await domainrepo.save(
+                        domain=parsed_url.netloc, status=URLDomainStatus.COMPLETED.value
+                    )
                     searchcache = c_cache.SearchCache(
                         domain=parsed_url.netloc,
                         url=searchrequest.url,

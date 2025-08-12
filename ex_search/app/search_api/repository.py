@@ -5,7 +5,6 @@ import redis.asyncio as aredis
 
 
 class URLDomainCacheRepository:
-    HEADER = "domain:"
     r: aredis.Redis
     expiry_seconds: int
 
@@ -16,23 +15,39 @@ class URLDomainCacheRepository:
         else:
             self.expiry_seconds = 3600
 
-    async def save(self, domain: str):
+    async def save(self, domain: str, status: str, expiry_seconds: int | None = None):
         now = datetime.now(timezone.utc)
         async with self.r.client() as client:
             key = await self._create_key(domain)
-            await client.set(key, now.isoformat(), ex=self.expiry_seconds)
+            data = {"status": status, "updated_at": now.isoformat()}
+            await client.hset(key, mapping=data)
+            if expiry_seconds:
+                await client.expire(key, expiry_seconds)
+            else:
+                await client.expire(key, self.expiry_seconds)
 
     async def get(self, domain: str) -> datetime | None:
         if not domain:
             return None
         async with self.r.client() as client:
             key = await self._create_key(domain)
-            cached_data = await client.get(key)
+            cached_data = await client.hgetall(key)
             if not cached_data:
                 return None
-            if isinstance(cached_data, bytes):
-                cached_data = cached_data.decode("utf-8")
-            return datetime.fromisoformat(cached_data)
+
+            def _decode_data(v):
+                if isinstance(v, bytes):
+                    return v.decode("utf-8")
+                return v
+
+            decoded_data = {
+                _decode_data(k): _decode_data(v) for k, v in cached_data.items()
+            }
+            if decoded_data.get("updated_at"):
+                decoded_data["updated_at"] = datetime.fromisoformat(
+                    decoded_data["updated_at"]
+                )
+            return decoded_data
 
     async def _create_key(self, key: str) -> str:
-        return self.HEADER + key
+        return f"domain:{key}:data"

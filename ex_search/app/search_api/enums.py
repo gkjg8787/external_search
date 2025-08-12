@@ -1,4 +1,5 @@
-from enum import Enum
+from enum import Enum, auto
+from common.enums import AutoLowerName
 
 
 class SuppoertedDomain(Enum):
@@ -6,9 +7,14 @@ class SuppoertedDomain(Enum):
     A_SOFMAP = "a.sofmap.com"
 
 
-class SupportedSiteName(Enum):
-    SOFMAP = "sofmap"
+class SupportedSiteName(AutoLowerName):
+    SOFMAP = auto()
 
 
 class ActivityName(Enum):
-    SearchClient = "searchclient"
+    SearchClient = auto()
+
+
+class URLDomainStatus(AutoLowerName):
+    DOWNLOADING = auto()
+    COMPLETED = auto()
