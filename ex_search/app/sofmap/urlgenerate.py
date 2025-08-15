@@ -64,3 +64,17 @@ def build_search_url(
         param["order_by"] = order_by.upper()
     final_url = f"{base_url}?{urlencode(param)}&{search_query}"
     return final_url
+
+
+def convert_to_direct_search(url: str):
+    if BASE_SEARCH_URL in url:
+        return url.replace(BASE_SEARCH_URL, DIRECT_SEARCH_URL)
+    if A_BASE_SEARCH_URL in url:
+        return url.replace(A_BASE_SEARCH_URL, A_DIRECT_SEARCH_URL)
+    if DIRECT_SEARCH_URL in url or A_DIRECT_SEARCH_URL in url:
+        return url
+    raise ValueError(f"not supported url : {url}")
+
+
+def is_direct_search(url: str):
+    return DIRECT_SEARCH_URL in url or A_DIRECT_SEARCH_URL in url

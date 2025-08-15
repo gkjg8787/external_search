@@ -18,3 +18,4 @@ class ActivityName(Enum):
 class URLDomainStatus(AutoLowerName):
     DOWNLOADING = auto()
     COMPLETED = auto()
+    FAILED = auto()

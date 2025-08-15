@@ -3,9 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from databases.sql import util as db_util
 from common import read_config
 from .web_scraper import (
-    get_html as sofmap_download,
+    get_html_with_selenium as sofmap_download,
     is_akiba_sofmap,
-    ScrapeCommand as SofmapScrapeCommand,
+    GetCommandWithSelenium as SofmapScrapeCommand,
 )
 
 

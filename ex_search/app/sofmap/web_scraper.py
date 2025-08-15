@@ -3,20 +3,26 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from databases.sql import util as db_util
 from sofmap.parser import SearchResultParser
 from . import cookie_util
 from .constants import A_SOFMAP_NETLOC
-from app.downloader import download
+from app.downloader import download_remotely, async_get
 
 
-class ScrapeCommand(BaseModel):
+class GetCommandWithSelenium(BaseModel):
     url: str
     is_ucaa: bool = Field(default=False)
     async_session: Any
     page_load_timeout: int | None = None
     tag_wait_timeout: int | None = None
     selenium_url: str | None = None
+
+
+class GetCommandWithHttpx(BaseModel):
+    url: str
+    is_ucaa: bool = Field(default=False)
+    timout: float = 5
+    delay_seconds: int = 1
 
 
 def is_akiba_sofmap(url: str) -> bool:
@@ -32,7 +38,7 @@ def is_valid_url_by_parse(url: str) -> bool:
         return False
 
 
-async def get_html(command: ScrapeCommand):
+async def get_html_with_selenium(command: GetCommandWithSelenium):
     if not is_valid_url_by_parse(command.url):
         return False, f"invalid url , url:{command.url}"
     is_a_sofmap = is_akiba_sofmap(command.url)
@@ -51,10 +57,27 @@ async def get_html(command: ScrapeCommand):
     if command.selenium_url:
         params["selenium_url"] = command.selenium_url
     try:
-        html = download.download_remotely(**params)
+        html = download_remotely(**params)
     except Exception as e:
         return False, f"download error, {e} , url:{command.url}"
     return True, html
+
+
+async def get_html(command: GetCommandWithHttpx):
+    is_a_sofmap = is_akiba_sofmap(command.url)
+    cookie_dict_list = cookie_util.create_cookies(
+        is_akiba=is_a_sofmap, is_ucaa=command.is_ucaa
+    )
+    try:
+        result = await async_get(
+            url=command.url,
+            timeout=command.timout,
+            delay_seconds=command.delay_seconds,
+            cookie_dict_list=cookie_dict_list,
+        )
+        return True, result
+    except Exception as e:
+        return False, str(e)
 
 
 async def parse_html(html: str, url: str):

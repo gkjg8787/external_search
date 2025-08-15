@@ -18,7 +18,7 @@ from domain.models.cache import (
     repository as i_cacherepo,
 )
 from domain.models.activitylog import enums as act_enums
-from app.sofmap.web_scraper import parse_html as parse_sofmap
+from app.sofmap import web_scraper as sofmap_scraper
 from app.sofmap.model_convert import ModelConverter
 from app.sofmap import urlgenerate as sofmap_urlgenerate, category as sofmap_category
 from app.activitylog.update import UpdateActivityLog
@@ -63,6 +63,15 @@ class SearchClient:
                     error_msg=str(e),
                 )
                 return SearchResponse(error_msg=str(e))
+        init_subinfo = {}
+        if searchrequest.options.get("convert_to_direct_search"):
+            converted_url = sofmap_urlgenerate.convert_to_direct_search(
+                url=searchrequest.url
+            )
+            if searchrequest.url != converted_url:
+                init_subinfo["convert_to"] = converted_url
+        else:
+            converted_url = searchrequest.url
 
         parsed_url = urlparse(searchrequest.url)
         tasklog = await upactlog.create(
@@ -70,19 +79,20 @@ class SearchClient:
             target_table=parsed_url.netloc,
             activity_type=ActivityName.SearchClient.value,
             caller_type=self.caller_type,
+            subinfo=init_subinfo,
         )
 
         if not tasklog:
             return SearchResponse(error_msg=f"task is not created")
 
         tasklog_id = tasklog.id
-        ok, result = await self._download_html()
+        ok, result = await self._download_html(converted_url=converted_url)
         if not ok:
             return SearchResponse(error_msg=result)
 
         match parsed_url.netloc:
             case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
-                parsed_result = await parse_sofmap(
+                parsed_result = await sofmap_scraper.parse_html(
                     html=result.download_text, url=searchrequest.url
                 )
                 sresults = ModelConverter.parseresults_to_searchresults(
@@ -142,7 +152,7 @@ class SearchClient:
         self,
         domain: str,
         repository: URLDomainCacheRepository,
-        wait_time_util_downloadable: int,
+        timeout_util_downloadable: int,
     ):
         cached_data = await repository.get(domain)
         if not cached_data:
@@ -155,7 +165,7 @@ class SearchClient:
         wait_start_time = time.perf_counter()
 
         def is_timeout(wait_start_time):
-            return time.perf_counter() - wait_start_time > wait_time_util_downloadable
+            return time.perf_counter() - wait_start_time > timeout_util_downloadable
 
         while True:
             cached_data = await repository.get(domain)
@@ -171,7 +181,7 @@ class SearchClient:
                         False,
                         f"time out, The time to wait for the update to finish has expired."
                         f"cache updated_at:{cached_data.get('updated_at')}"
-                        f" wait_time_util_dl:{wait_time_util_downloadable}"
+                        f" wait_time_util_dl:{timeout_util_downloadable}"
                         f" status:{cached_data.get('status')}",
                     )
                 continue
@@ -185,13 +195,17 @@ class SearchClient:
                     False,
                     f"time out, The time to wait for the update to finish has expired."
                     f"cache updated_at:{cached_data.get('updated_at')}"
-                    f" wait_time_util_dl:{wait_time_util_downloadable}"
+                    f" wait_time_util_dl:{timeout_util_downloadable}"
                     f" diff_time:{now.total_seconds()}",
                 )
 
-    async def _download_html(self):
+    async def _download_html(self, converted_url: str | None = None):
         searchrequest = self.searchrequest
-        parsed_url = urlparse(searchrequest.url)
+        if converted_url and converted_url != searchrequest.url:
+            target_url = converted_url
+        else:
+            target_url = searchrequest.url
+        parsed_url = urlparse(target_url)
         searchcache = await self._get_search_cache()
         if searchcache and searchcache.download_text:
             return True, searchcache
@@ -201,7 +215,7 @@ class SearchClient:
             ok, msg = await self._wait_downloadable(
                 domain=parsed_url.netloc,
                 repository=domainrepo,
-                wait_time_util_downloadable=dl_waittimeopts.wait_time_util_downloadable,
+                timeout_util_downloadable=dl_waittimeopts.timeout_util_downloadable,
             )
             if not ok:
                 return False, msg
@@ -210,10 +224,24 @@ class SearchClient:
             )
             match parsed_url.netloc:
                 case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
-                    dl_task = celery_tasks.sofmap_dl_task.delay(searchrequest.url)
-                    ok, result = dl_task.get(
-                        timeout=dl_waittimeopts.timeout_for_each_url
-                    )
+                    if sofmap_urlgenerate.is_direct_search(url=target_url):
+                        ok, result = await sofmap_scraper.get_html(
+                            sofmap_scraper.GetCommandWithHttpx(
+                                url=target_url,
+                                timeout=dl_waittimeopts.timeout_for_each_url,
+                                delay_seconds=dl_waittimeopts.min_wait_time_for_celery_dl,
+                                is_ucaa=sofmap_scraper.is_akiba_sofmap(target_url),
+                            )
+                        )
+                    else:
+                        dl_task = celery_tasks.sofmap_dl_task.delay(target_url)
+                        if dl_waittimeopts.min_wait_time_for_celery_dl:
+                            await asyncio.sleep(
+                                dl_waittimeopts.min_wait_time_for_celery_dl
+                            )
+                        ok, result = dl_task.get(
+                            timeout=dl_waittimeopts.timeout_for_each_url
+                        )
                     if not ok:
                         return False, result
                     await domainrepo.save(
@@ -221,14 +249,16 @@ class SearchClient:
                     )
                     searchcache = c_cache.SearchCache(
                         domain=parsed_url.netloc,
-                        url=searchrequest.url,
+                        url=target_url,
                         download_type=c_enums.DownloadType.SELENIUM.value,
                         download_text=result,
                     )
                     return ok, searchcache
                 case _:
+                    await domainrepo.save(
+                        domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
+                    )
                     return False, f"not supported domain : {parsed_url.netloc}"
-        return False, "not download"
 
 
 class KeyWordToURL:

@@ -32,5 +32,6 @@ CACHE_OPTIONS = {
 }
 DOWNLOAD_WAITTIME_OPTIONS = {
     "timeout_for_each_url": 60,
-    "wait_time_util_downloadable": 300,
+    "timeout_util_downloadable": 300,
+    "min_wait_time_for_celery_dl": 1,
 }
