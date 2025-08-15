@@ -89,7 +89,6 @@ curl -X 'POST' \
 | オプション名             | 説明                                                                                                                                          | 設定する値    | 有効な種別。URL なら URL 指定の際に動作 |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | --------------------------------------- |
 | convert_to_direct_search | URL が`https://〜search_result.aspx`の場合、`https://〜product_list_parts.aspx`に変更する。selenium ではなく httpx で取得するため動作が軽い。 | true or false | URL                                     |
-
 |gid | カテゴリー ID | `001240`などの文字列 | keyword |
 |is_akiba | akiba sofmap で検索する。 | true | keyword |
 | direct_search | convert_to_direct_search と同様で検索する URL を`product_list_parts.aspx`にする。| true | keyword |
