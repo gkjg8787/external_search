@@ -17,10 +17,11 @@ async def download_task(url: str):
 async def async_download_sofmap(session: AsyncSession, url: str):
     sofmapopt = read_config.get_sofmap_options()
     seleniumopt = read_config.get_selenium_options()
+    searchopt = read_config.get_search_options()
     ok, result = await sofmap_download(
         command=SofmapScrapeCommand(
             url=url,
-            is_ucaa=is_akiba_sofmap(url),
+            is_ucaa=not searchopt.safe_search,
             async_session=session,
             page_load_timeout=sofmapopt.selenium.page_load_timeout,
             tag_wait_timeout=sofmapopt.selenium.tag_wait_timeout,

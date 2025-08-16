@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 
 import redis.asyncio as aredis
@@ -48,6 +47,13 @@ class URLDomainCacheRepository:
                     decoded_data["updated_at"]
                 )
             return decoded_data
+
+    async def delete_all(self):
+        async with self.r.client() as client:
+            key = await self._create_key("*")
+            domain_keys = await client.keys(key)
+            if domain_keys:
+                await client.delete(*domain_keys)
 
     async def _create_key(self, key: str) -> str:
         return f"domain:{key}:data"

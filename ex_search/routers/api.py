@@ -4,6 +4,7 @@ import redis.asyncio as a_redis
 
 from common.read_config import get_cache_options, get_redis_options
 from databases.sql.util import get_async_session
+from databases.redis.util import get_async_redis
 from databases.redis.cache import repository as redis_cache_repo
 from databases.sql.cache import repository as sql_cache_repo
 from domain.schemas.search import SearchRequest, SearchResponse
@@ -29,9 +30,8 @@ async def api_get_search_result(
         )
     cache_options = get_cache_options()
     if cache_options.backend == "redis":
-        redisopts = get_redis_options()
         searchcache_repo = redis_cache_repo.SearchCacheRedisRepository(
-            r=a_redis.Redis(host=redisopts.host, port=redisopts.port, db=redisopts.db),
+            r=get_async_redis(),
             expiry_seconds=cache_options.expires,
         )
     else:

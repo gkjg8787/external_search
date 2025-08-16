@@ -35,3 +35,6 @@ DOWNLOAD_WAITTIME_OPTIONS = {
     "timeout_util_downloadable": 300,
     "min_wait_time_for_celery_dl": 1,
 }
+SEARCH_OPTIONS = {
+    "safe_search": True,
+}

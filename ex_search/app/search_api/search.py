@@ -18,6 +18,7 @@ from domain.models.cache import (
     repository as i_cacherepo,
 )
 from domain.models.activitylog import enums as act_enums
+from databases.redis.util import get_async_redis
 from app.sofmap import web_scraper as sofmap_scraper
 from app.sofmap.model_convert import ModelConverter
 from app.sofmap import urlgenerate as sofmap_urlgenerate, category as sofmap_category
@@ -89,6 +90,15 @@ class SearchClient:
         ok, result = await self._download_html(converted_url=converted_url)
         if not ok:
             return SearchResponse(error_msg=result)
+        add_subinfo = {}
+        if searchrequest.options.get(
+            "remove_duplicates"
+        ) is None or searchrequest.options.get("remove_duplicates"):
+            remove_duplicates = True
+            add_subinfo["remove_duplicates"] = True
+        else:
+            remove_duplicates = False
+            add_subinfo["remove_duplicates"] = False
 
         match parsed_url.netloc:
             case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
@@ -96,7 +106,7 @@ class SearchClient:
                     html=result.download_text, url=searchrequest.url
                 )
                 sresults = ModelConverter.parseresults_to_searchresults(
-                    results=parsed_result
+                    results=parsed_result, remove_duplicates=remove_duplicates
                 )
                 response = SearchResponse(**sresults.model_dump())
             case _:
@@ -140,10 +150,9 @@ class SearchClient:
         await repo.save(data=searchcache)
 
     async def _create_URLDomainCacheRepository(self):
-        redisopts = read_config.get_redis_options()
         cacheopts = read_config.get_cache_options()
         domainrepo = URLDomainCacheRepository(
-            r=a_redis.Redis(host=redisopts.host, port=redisopts.port, db=redisopts.db),
+            r=get_async_redis(),
             expiry_seconds=cacheopts.expires,
         )
         return domainrepo
@@ -219,6 +228,7 @@ class SearchClient:
             )
             if not ok:
                 return False, msg
+            searchopts = read_config.get_search_options()
             await domainrepo.save(
                 domain=parsed_url.netloc, status=URLDomainStatus.DOWNLOADING.value
             )
@@ -230,7 +240,7 @@ class SearchClient:
                                 url=target_url,
                                 timeout=dl_waittimeopts.timeout_for_each_url,
                                 delay_seconds=dl_waittimeopts.min_wait_time_for_celery_dl,
-                                is_ucaa=sofmap_scraper.is_akiba_sofmap(target_url),
+                                is_ucaa=not searchopts.safe_search,
                             )
                         )
                     else:

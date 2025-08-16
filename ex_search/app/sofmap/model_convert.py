@@ -5,9 +5,9 @@ from sofmap.model import ParseResults, ParseResult
 class ModelConverter:
     @classmethod
     def parseresults_to_searchresults(
-        cls, results: ParseResults, remove_duplicate: bool = True
+        cls, results: ParseResults, remove_duplicates: bool = True
     ) -> search.SearchResults:
-        if remove_duplicate:
+        if remove_duplicates:
             new_results = cls.remove_duplicates_of_parseresults(
                 results=results, update_stock_quantity=True
             )

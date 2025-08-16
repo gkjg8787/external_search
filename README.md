@@ -83,19 +83,20 @@ curl -X 'POST' \
 
 ### sofmap の検索オプション
 
-- sitename に sofmap を指定した際のオプションで`{"name":"value"}`の形で指定する。複数の場合は`{"name1":"value1", "name2":"value2"}`というようにカンマで区切る。
-- ページ指定はないので結果が多い場合は検索ワードで絞る必要がある。
+- sitename に sofmap を指定した際のオプションで`{"name":"value"}`の形で指定する。複数の場合は`{"name1":"value1", "name2":"value2"}`というようにカンマで区切る。value は型に合わせた書き方で。
+- ページ指定はないので結果が多い場合は検索ワードや gid で絞る必要がある。
 
-| オプション名             | 説明                                                                                                                                          | 設定する値    | 有効な種別。URL なら URL 指定の際に動作 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | --------------------------------------- |
-| convert_to_direct_search | URL が`https://〜search_result.aspx`の場合、`https://〜product_list_parts.aspx`に変更する。selenium ではなく httpx で取得するため動作が軽い。 | true or false | URL                                     |
-|gid | カテゴリー ID | `001240`などの文字列 | keyword |
-|is_akiba | akiba sofmap で検索する。 | true | keyword |
-| direct_search | convert_to_direct_search と同様で検索する URL を`product_list_parts.aspx`にする。| true | keyword |
-|product_type|商品コンディション| USED or NEW or ALL | keyword |
-|order_by | 並び順 | DEFAULT 等 | keyword |
-|display_count| 表示数 | 数値 | keyword |
-|category| gid を指定していない場合でカテゴリーを文字列で指定。サイトの検索カテゴリ名と完全一致が必要。`家電・照明`のような複数が一行になっているものも完全一致が必要。 | ゲーム等 | keyword |
+| オプション名             | 説明                                                                                                                                                         | 設定する値           | 有効な種別。URL なら URL 指定の際に動作 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | --------------------------------------- |
+| convert_to_direct_search | URL が`https://〜search_result.aspx`の場合、`https://〜product_list_parts.aspx`に変更する。selenium ではなく httpx で取得するため動作が軽い。                | true or false        | URL or keyword                          |
+| gid                      | カテゴリー ID                                                                                                                                                | `001240`などの文字列 | keyword                                 |
+| is_akiba                 | akiba sofmap で検索する。                                                                                                                                    | true                 | keyword                                 |
+| direct_search            | convert_to_direct_search と同様で検索する URL を`product_list_parts.aspx`にする。                                                                            | true                 | keyword                                 |
+| product_type             | 商品コンディション                                                                                                                                           | USED or NEW or ALL   | keyword                                 |
+| order_by                 | 並び順                                                                                                                                                       | DEFAULT 等           | keyword                                 |
+| display_count            | 表示数                                                                                                                                                       | 数値                 | keyword                                 |
+| category                 | gid を指定していない場合でカテゴリーを文字列で指定。サイトの検索カテゴリ名と完全一致が必要。`家電・照明`のような複数が一行になっているものも完全一致が必要。 | ゲーム等             | keyword                                 |
+| remove_duplicates        | 検索結果の重複を削除する。検索サイトにより動作が違う。sofmap は店舗名以外が同じ場合重複扱い。デフォルトは true で重複削除。                                  | true or false        | URL or keyword                          |
 
 ### Response のパラメータ
 

@@ -42,6 +42,10 @@ class LogOptions(BaseModel):
     directory_path: str
 
 
+class SearchOptions(BaseModel):
+    safe_search: bool
+
+
 CACHE_BACKEND_LITERAL = Literal["redis", "sql"]
 
 
@@ -105,3 +109,8 @@ def get_cache_options():
 def get_download_waittime_options():
     lower_key_dict = to_lower_keys(settings.DOWNLOAD_WAITTIME_OPTIONS)
     return DownloadWaitTimeOptions(**lower_key_dict)
+
+
+def get_search_options():
+    lower_key_dict = to_lower_keys(settings.SEARCH_OPTIONS)
+    return SearchOptions(**lower_key_dict)
