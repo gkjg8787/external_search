@@ -6,7 +6,6 @@ import asyncio
 import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as a_redis
 
 import tasks as celery_tasks
 from common import read_config
@@ -50,6 +49,7 @@ class SearchClient:
     async def execute(self) -> SearchResponse:
         searchrequest: SearchRequest = self.searchrequest
         upactlog = UpdateActivityLog(ses=self.session)
+        init_subinfo = {"request": searchrequest.model_dump()}
         if searchrequest.search_keyword and not searchrequest.url:
             urlgenerator = KeyWordToURL(ses=self.session, searchrequest=searchrequest)
             try:
@@ -62,9 +62,9 @@ class SearchClient:
                     status=act_enums.UpdateStatus.FAILED.name,
                     caller_type=self.caller_type,
                     error_msg=str(e),
+                    subinfo=init_subinfo,
                 )
                 return SearchResponse(error_msg=str(e))
-        init_subinfo = {}
         if searchrequest.options.get("convert_to_direct_search"):
             converted_url = sofmap_urlgenerate.convert_to_direct_search(
                 url=searchrequest.url
@@ -89,6 +89,10 @@ class SearchClient:
         tasklog_id = tasklog.id
         ok, result = await self._download_html(converted_url=converted_url)
         if not ok:
+            await upactlog.failed(
+                id=tasklog_id,
+                error_msg=result,
+            )
             return SearchResponse(error_msg=result)
         add_subinfo = {}
         if searchrequest.options.get(

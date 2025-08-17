@@ -2,13 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as a_redis
 
-from common.read_config import get_cache_options, get_redis_options
+from common.read_config import get_cache_options
 from databases.sql.util import get_async_session
 from databases.redis.util import get_async_redis
+from databases.sql.category import repository as cate_repo
 from databases.redis.cache import repository as redis_cache_repo
 from databases.sql.cache import repository as sql_cache_repo
-from domain.schemas.search import SearchRequest, SearchResponse
+from domain.schemas.search import (
+    SearchRequest,
+    SearchResponse,
+    InfoResponse,
+    InfoRequest,
+)
 from app.search_api.search import SearchClient
+from app.search_api.info import SearchInfo
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -45,6 +52,28 @@ async def api_get_search_result(
     )
     try:
         response = await client.execute()
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return response
+
+
+@router.post(
+    "/search/info/",
+    response_model=InfoResponse,
+    description="渡された値からその他の情報を返します。",
+)
+async def api_get_search_info(
+    inforeq: InfoRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    infoclient = SearchInfo(
+        ses=db,
+        caller_type=CALLER_TYPE,
+        inforeq=inforeq,
+        category_repo=cate_repo.CategoryRepository(ses=db),
+    )
+    try:
+        response = await infoclient.execute()
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
     return response

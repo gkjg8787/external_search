@@ -13,9 +13,14 @@ class SupportedSiteName(AutoLowerName):
 
 class ActivityName(Enum):
     SearchClient = auto()
+    SearchInfo = auto()
 
 
 class URLDomainStatus(AutoLowerName):
     DOWNLOADING = auto()
     COMPLETED = auto()
     FAILED = auto()
+
+
+class InfoName(AutoLowerName):
+    CATEGORY = auto()

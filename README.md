@@ -19,7 +19,11 @@
 
 ## 使い方
 
-- このサーバの/api/search/を POST し JSON でパラメータを指定する。
+- api には検索の search と検索で使用するカテゴリー一覧の取得の search/info がある。
+
+### 検索
+
+- このサーバの`/api/search/`を POST し JSON でパラメータを指定する。
 
 | パラメータ名   | 説明                                 | 設定する値       | デフォルト |
 | -------------- | ------------------------------------ | ---------------- | ---------- |
@@ -33,7 +37,7 @@
     - results の値として list 型で取得したデータを返す。
   - 異常:`{"results":[], "error_msg":""}` または `{"detail":""}`としてメッセージエラーが乗って返る。
 
-### 例
+#### 例
 
 - curl
 
@@ -81,7 +85,7 @@ curl -X 'POST' \
 }
 ```
 
-### sofmap の検索オプション
+#### sofmap の検索オプション
 
 - sitename に sofmap を指定した際のオプションで`{"name":"value"}`の形で指定する。複数の場合は`{"name1":"value1", "name2":"value2"}`というようにカンマで区切る。value は型に合わせた書き方で。
 - ページ指定はないので結果が多い場合は検索ワードや gid で絞る必要がある。
@@ -98,7 +102,7 @@ curl -X 'POST' \
 | category                 | gid を指定していない場合でカテゴリーを文字列で指定。サイトの検索カテゴリ名と完全一致が必要。`家電・照明`のような複数が一行になっているものも完全一致が必要。 | ゲーム等             | keyword                                 |
 | remove_duplicates        | 検索結果の重複を削除する。検索サイトにより動作が違う。sofmap は店舗名以外が同じ場合重複扱い。デフォルトは true で重複削除。                                  | true or false        | URL or keyword                          |
 
-### Response のパラメータ
+#### Response のパラメータ
 
 - results の値の取得したデータの説明。価格がない場合は price:-1 になる。
 
@@ -126,3 +130,59 @@ curl -X 'POST' \
 | --------- | ---------------------------------- | ------------ |
 | point     | 付与されるポイント                 | 数値         |
 | sub_price | 中古等のリンクがある場合の中古価格 | 数値         |
+
+### カテゴリー一覧の取得
+
+- `/api/search/info`を POST し JSON でパラメータを指定する。
+
+| パラメータ名 | 説明           | 設定する値 | デフォルト |
+| ------------ | -------------- | ---------- | ---------- |
+| sitename     | 対象サイト名   | sofmap     |            |
+| infoname     | 取得する情報名 | category   |            |
+| options      | オプション     | dict       |            |
+
+#### カテゴリーのオプション
+
+- 現在オプションはアキバソフマップを対象にするかどうかの`is_akiba`のみ。<br>
+  `{"is_akiba":true}`
+
+#### 例
+
+- curl
+
+```
+curl -X 'POST' \
+  'http://localhost:8060/api/search/info/' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "sitename": "sofmap",
+  "infoname": "category",
+  "options": {
+
+  }
+}'
+```
+
+- response
+
+```
+{
+  "results": [
+    {
+      "gid": "",
+      "name": "全てのカテゴリ"
+    },
+    {
+      "gid": "001010",
+      "name": "パソコン"
+    },
+    {
+      "gid": "001020",
+      "name": "ゲーミングPC・周辺機器"
+    },
+    : 多いので省略
+  ],
+  "error_msg": ""
+}
+```
