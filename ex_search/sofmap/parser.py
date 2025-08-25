@@ -6,12 +6,8 @@ from .model import (
     ParseResult,
     ParseResults,
     CategoryResult,
-    NONE_POINT,
-    NONE_PRICE,
-    NONE_STOCK_NUM,
-    SOFMAP,
-    A_SOFMAP,
 )
+from .constants import NONE_POINT, NONE_PRICE, NONE_STOCK_NUM, SOFMAP, A_SOFMAP
 
 
 class SearchResultParser:

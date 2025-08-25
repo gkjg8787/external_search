@@ -8,6 +8,8 @@
 
 - sofmap
   - 検索結果`https://www.sofmap.com/search_result.aspx`に対応。個別ページ`https://www.sofmap.com/product_detail.aspx`には非対応。akiba sofmap`https://a.sofmap.com/`も同様。
+- geo
+  - 検索結果`https://ec.geo-online.co.jp/shop/goods/search.aspx`に対応。個別ページ`https://ec.geo-online.co.jp/shop/g/`には非対応。
 
 ## 前提
 
@@ -29,7 +31,7 @@
 | -------------- | ------------------------------------ | ---------------- | ---------- |
 | url            | データを取得したい URL を直接指定    | 有効な URL       | null       |
 | search_keyword | URL を指定しない場合の検索キーワード | 検索したい文字列 | null       |
-| sitename       | 検索対象のサイト(必須)               | sofmap 等        |            |
+| sitename       | 検索対象のサイト(必須)               | sofmap or geo    |            |
 | options        | 検索や動作のオプション               | dict 型          | {}         |
 
 - 応答は以下の形式で返ってくる。
@@ -102,6 +104,10 @@ curl -X 'POST' \
 | category                 | gid を指定していない場合でカテゴリーを文字列で指定。サイトの検索カテゴリ名と完全一致が必要。`家電・照明`のような複数が一行になっているものも完全一致が必要。 | ゲーム等             | keyword                                 |
 | remove_duplicates        | 検索結果の重複を削除する。検索サイトにより動作が違う。sofmap は店舗名以外が同じ場合重複扱い。デフォルトは true で重複削除。                                  | true or false        | URL or keyword                          |
 
+#### geo の検索オプション
+
+- ゲオには検索オプションなし。
+
 #### Response のパラメータ
 
 - results の値の取得したデータの説明。価格がない場合は price:-1 になる。
@@ -134,6 +140,7 @@ curl -X 'POST' \
 ### カテゴリー一覧の取得
 
 - `/api/search/info`を POST し JSON でパラメータを指定する。
+- sofmap のみ対応。
 
 | パラメータ名 | 説明           | 設定する値 | デフォルト |
 | ------------ | -------------- | ---------- | ---------- |

@@ -25,6 +25,7 @@ SOFMAP_OPTIONS = {
         "TAG_WAIT_TIMEOUT": 15,
     }
 }
+GEO_OPTIONS = {"selenium": {"PAGE_LOAD_TIMEOUT": 30, "TAG_WAIT_TIMEOUT": 15}}
 LOG_OPTIONS = {"directory_path": f"{BASE_DIR}/log/"}
 CACHE_OPTIONS = {
     "expires": 300,

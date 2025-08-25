@@ -18,6 +18,10 @@ class SofmapOptions(BaseModel):
     selenium: SelenimuTimeoutOptions
 
 
+class GeoOptions(BaseModel):
+    selenium: SelenimuTimeoutOptions
+
+
 class SQLParams(BaseModel):
     drivername: str
     database: str
@@ -84,6 +88,11 @@ def get_selenium_options():
 def get_sofmap_options():
     lower_key_dict = to_lower_keys(settings.SOFMAP_OPTIONS)
     return SofmapOptions(**lower_key_dict)
+
+
+def get_geo_options():
+    lower_key_dict = to_lower_keys(settings.GEO_OPTIONS)
+    return GeoOptions(**lower_key_dict)
 
 
 def get_databases():

@@ -1,7 +1,6 @@
 from urllib.parse import urlparse
 from typing import Any
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from sofmap.parser import SearchResultParser
 from . import cookie_util
@@ -12,7 +11,6 @@ from app.downloader import download_remotely, async_get
 class GetCommandWithSelenium(BaseModel):
     url: str
     is_ucaa: bool = Field(default=False)
-    async_session: Any
     page_load_timeout: int | None = None
     tag_wait_timeout: int | None = None
     selenium_url: str | None = None

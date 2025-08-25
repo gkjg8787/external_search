@@ -1,12 +1,5 @@
 from pydantic import BaseModel, Field
-
-NONE_PRICE = -1
-NONE_POINT = 0
-NONE_STOCK_NUM = 0
-
-# リコレ非対応
-SOFMAP = "sofmap"
-A_SOFMAP = "akiba sofmap"
+from .constants import NONE_POINT, NONE_PRICE, NONE_STOCK_NUM, SOFMAP
 
 
 class ParseResult(BaseModel):

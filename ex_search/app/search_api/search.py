@@ -18,12 +18,18 @@ from domain.models.cache import (
 )
 from domain.models.activitylog import enums as act_enums
 from databases.redis.util import get_async_redis
-from app.sofmap import web_scraper as sofmap_scraper
-from app.sofmap.model_convert import ModelConverter
 from app.sofmap import (
+    web_scraper as sofmap_scraper,
+    model_convert as sofmap_modelconvert,
     urlgenerate as sofmap_urlgenerate,
     category as sofmap_category,
     tasks as sofmap_tasks,
+)
+from app.geo import (
+    urlgenerate as geo_urlgenerate,
+    web_scraper as geo_scraper,
+    model_convert as geo_modelconvert,
+    tasks as geo_tasks,
 )
 from app.activitylog.update import UpdateActivityLog
 from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
@@ -69,16 +75,20 @@ class SearchClient:
                     subinfo=init_subinfo,
                 )
                 return SearchResponse(error_msg=str(e))
-        if searchrequest.options.get("convert_to_direct_search"):
-            converted_url = sofmap_urlgenerate.convert_to_direct_search(
-                url=searchrequest.url
-            )
-            if searchrequest.url != converted_url:
-                init_subinfo["convert_to"] = converted_url
-        else:
-            converted_url = searchrequest.url
-
         parsed_url = urlparse(searchrequest.url)
+        match parsed_url.netloc:
+            case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
+                if searchrequest.options.get("convert_to_direct_search"):
+                    converted_url = sofmap_urlgenerate.convert_to_direct_search(
+                        url=searchrequest.url
+                    )
+                    if searchrequest.url != converted_url:
+                        init_subinfo["convert_to"] = converted_url
+                else:
+                    converted_url = searchrequest.url
+            case _:
+                converted_url = searchrequest.url
+
         tasklog = await upactlog.create(
             target_id=str(uuid.uuid4()),
             target_table=parsed_url.netloc,
@@ -113,8 +123,20 @@ class SearchClient:
                 parsed_result = await sofmap_scraper.parse_html(
                     html=result.download_text, url=searchrequest.url
                 )
-                sresults = ModelConverter.parseresults_to_searchresults(
-                    results=parsed_result, remove_duplicates=remove_duplicates
+                sresults = (
+                    sofmap_modelconvert.ModelConverter.parseresults_to_searchresults(
+                        results=parsed_result, remove_duplicates=remove_duplicates
+                    )
+                )
+                response = SearchResponse(**sresults.model_dump())
+            case SuppoertedDomain.GEO.value:
+                parsed_result = await geo_scraper.parse_html(
+                    html=result.download_text, url=searchrequest.url
+                )
+                sresults = (
+                    geo_modelconvert.ModelConverter.parseresults_to_searchresults(
+                        results=parsed_result
+                    )
                 )
                 response = SearchResponse(**sresults.model_dump())
             case _:
@@ -251,27 +273,35 @@ class SearchClient:
                                 is_ucaa=not searchopts.safe_search,
                             )
                         )
+                        download_type = c_enums.DownloadType.HTTPX.value
                     else:
                         ok, result = await sofmap_tasks.async_download_sofmap(
-                            session=self.session, url=target_url
+                            url=target_url
                         )
-                    if not ok:
-                        return False, result
-                    await domainrepo.save(
-                        domain=parsed_url.netloc, status=URLDomainStatus.COMPLETED.value
-                    )
-                    searchcache = c_cache.SearchCache(
-                        domain=parsed_url.netloc,
-                        url=target_url,
-                        download_type=c_enums.DownloadType.SELENIUM.value,
-                        download_text=result,
-                    )
-                    return ok, searchcache
+                        download_type = c_enums.DownloadType.SELENIUM.value
+                case SuppoertedDomain.GEO.value:
+                    ok, result = await geo_tasks.async_download_geo(url=target_url)
+                    download_type = c_enums.DownloadType.SELENIUM.value
                 case _:
                     await domainrepo.save(
                         domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
                     )
                     return False, f"not supported domain : {parsed_url.netloc}"
+            if not ok:
+                await domainrepo.save(
+                    domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
+                )
+                return False, result
+            await domainrepo.save(
+                domain=parsed_url.netloc, status=URLDomainStatus.COMPLETED.value
+            )
+            searchcache = c_cache.SearchCache(
+                domain=parsed_url.netloc,
+                url=target_url,
+                download_type=download_type,
+                download_text=result,
+            )
+            return ok, searchcache
 
 
 class KeyWordToURL:
@@ -286,41 +316,52 @@ class KeyWordToURL:
         searchrequest: SearchRequest = self.searchrequest
         match searchrequest.sitename.lower():
             case SupportedSiteName.SOFMAP.value:
-                params = {
-                    "search_keyword": searchrequest.search_keyword,
-                }
-                if searchrequest.options:
-                    extraction_any_keys = [
-                        "is_akiba",
-                        "direct_search",
-                        "product_type",
-                        "gid",
-                        "order_by",
-                    ]
-                    extraction_int_keys = ["display_count"]
-                    any_params = self._extract_params(
-                        options=searchrequest.options, target_keys=extraction_any_keys
-                    )
-                    int_params = self._extract_params(
-                        options=searchrequest.options,
-                        target_keys=extraction_int_keys,
-                        convert_value=lambda x: int(x),
-                    )
-                    category_name = searchrequest.options.get("category")
-                    if not any_params.get("gid") and category_name:
-                        gid = await sofmap_category.get_category_id(
-                            ses=self.session,
-                            is_akiba=any_params.get("is_akiba", False),
-                            category_name=category_name,
-                        )
-                        if gid:
-                            any_params["gid"] = gid
-                    params = params | any_params | int_params
-                return sofmap_urlgenerate.build_search_url(**params)
+                return await self._build_sofmap_url(searchrequest)
+            case SupportedSiteName.GEO.value:
+                return await self._build_geo_url(searchrequest)
             case _:
                 raise ValueError(
                     f"not supported sitename : {searchrequest.sitename.lower()}"
                 )
+
+    async def _build_geo_url(self, searchrequest: SearchRequest):
+        params = {
+            "search_keyword": searchrequest.search_keyword,
+        }
+        return geo_urlgenerate.build_search_url(**params)
+
+    async def _build_sofmap_url(self, searchrequest: SearchRequest):
+        params = {
+            "search_keyword": searchrequest.search_keyword,
+        }
+        if searchrequest.options:
+            extraction_any_keys = [
+                "is_akiba",
+                "direct_search",
+                "product_type",
+                "gid",
+                "order_by",
+            ]
+            extraction_int_keys = ["display_count"]
+            any_params = self._extract_params(
+                options=searchrequest.options, target_keys=extraction_any_keys
+            )
+            int_params = self._extract_params(
+                options=searchrequest.options,
+                target_keys=extraction_int_keys,
+                convert_value=lambda x: int(x),
+            )
+            category_name = searchrequest.options.get("category")
+            if not any_params.get("gid") and category_name:
+                gid = await sofmap_category.get_category_id(
+                    ses=self.session,
+                    is_akiba=any_params.get("is_akiba", False),
+                    category_name=category_name,
+                )
+                if gid:
+                    any_params["gid"] = gid
+            params = params | any_params | int_params
+        return sofmap_urlgenerate.build_search_url(**params)
 
     def _extract_params(
         self,

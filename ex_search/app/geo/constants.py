@@ -1,0 +1,1 @@
+INIT_STOCK_NUM = 1
