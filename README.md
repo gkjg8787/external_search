@@ -26,18 +26,22 @@
 - geo
   - 検索結果`https://ec.geo-online.co.jp/shop/goods/search.aspx`に対応。個別ページ`https://ec.geo-online.co.jp/shop/g/`には非対応。
 
+[TOP](#概要)
 ## 前提
 
 - docker 導入済み
 
+[TOP](#概要)
 ## 起動
 
 - `docker compose up --build -d`
 
+[TOP](#概要)
 ## 使い方
 
 - api には検索の search と検索で使用するカテゴリー一覧の取得の search/info がある。
 
+[TOP](#概要)
 ### 検索
 
 - このサーバの`/api/search/`を POST し JSON でパラメータを指定する。
@@ -54,6 +58,7 @@
     - results の値として list 型で取得したデータを返す。
   - 異常:`{"results":[], "error_msg":""}` または `{"detail":""}`としてメッセージエラーが乗って返る。
 
+[TOP](#概要)
 #### 検索の例
 
 - curl
@@ -102,6 +107,7 @@ curl -X 'POST' \
 }
 ```
 
+[TOP](#概要)
 #### sofmap の検索オプション
 
 - sitename に sofmap を指定した際のオプションで`{"name":"value"}`の形で指定する。複数の場合は`{"name1":"value1", "name2":"value2"}`というようにカンマで区切る。value は型に合わせた書き方で。
@@ -119,10 +125,12 @@ curl -X 'POST' \
 | category                 | gid を指定していない場合でカテゴリーを文字列で指定。サイトの検索カテゴリ名と完全一致が必要。`家電・照明`のような複数が一行になっているものも完全一致が必要。 | ゲーム等             | keyword                                 |
 | remove_duplicates        | 検索結果の重複を削除する。検索サイトにより動作が違う。sofmap は店舗名以外が同じ場合重複扱い。デフォルトは true で重複削除。                                  | true or false        | URL or keyword                          |
 
+[TOP](#概要)
 #### geo の検索オプション
 
 - ゲオには検索オプションなし。
 
+[TOP](#概要)
 #### Response のパラメータ
 
 - results の値の取得したデータの説明。価格がない場合は price:-1 になる。
@@ -158,6 +166,7 @@ curl -X 'POST' \
 | -------- | ---------------- | ------------ |
 | category | 対象のカテゴリー | 文字列       |
 
+[TOP](#概要)
 ### カテゴリー一覧の取得
 
 - `/api/search/info`を POST し JSON でパラメータを指定する。
@@ -169,11 +178,13 @@ curl -X 'POST' \
 | infoname     | 取得する情報名 | category   |            |
 | options      | オプション     | dict       |            |
 
+[TOP](#概要)
 #### カテゴリーのオプション
 
 - 現在オプションはアキバソフマップを対象にするかどうかの`is_akiba`のみ。<br>
   `{"is_akiba":true}`
 
+[TOP](#概要)
 #### カテゴリー一覧の取得例
 
 - curl
@@ -214,3 +225,5 @@ curl -X 'POST' \
   "error_msg": ""
 }
 ```
+
+[TOP](#概要)
