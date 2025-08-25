@@ -7,7 +7,7 @@ import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import tasks as celery_tasks
+
 from common import read_config
 from domain.schemas.search import SearchRequest, SearchResponse
 from domain.models.cache import (
@@ -20,7 +20,11 @@ from domain.models.activitylog import enums as act_enums
 from databases.redis.util import get_async_redis
 from app.sofmap import web_scraper as sofmap_scraper
 from app.sofmap.model_convert import ModelConverter
-from app.sofmap import urlgenerate as sofmap_urlgenerate, category as sofmap_category
+from app.sofmap import (
+    urlgenerate as sofmap_urlgenerate,
+    category as sofmap_category,
+    tasks as sofmap_tasks,
+)
 from app.activitylog.update import UpdateActivityLog
 from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
 from .repository import URLDomainCacheRepository
@@ -243,18 +247,13 @@ class SearchClient:
                             sofmap_scraper.GetCommandWithHttpx(
                                 url=target_url,
                                 timeout=dl_waittimeopts.timeout_for_each_url,
-                                delay_seconds=dl_waittimeopts.min_wait_time_for_celery_dl,
+                                delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
                                 is_ucaa=not searchopts.safe_search,
                             )
                         )
                     else:
-                        dl_task = celery_tasks.sofmap_dl_task.delay(target_url)
-                        if dl_waittimeopts.min_wait_time_for_celery_dl:
-                            await asyncio.sleep(
-                                dl_waittimeopts.min_wait_time_for_celery_dl
-                            )
-                        ok, result = dl_task.get(
-                            timeout=dl_waittimeopts.timeout_for_each_url
+                        ok, result = await sofmap_tasks.async_download_sofmap(
+                            session=self.session, url=target_url
                         )
                     if not ok:
                         return False, result

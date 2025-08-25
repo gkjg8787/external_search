@@ -33,7 +33,7 @@ CACHE_OPTIONS = {
 DOWNLOAD_WAITTIME_OPTIONS = {
     "timeout_for_each_url": 60,
     "timeout_util_downloadable": 300,
-    "min_wait_time_for_celery_dl": 1,
+    "min_wait_time_of_dl": 1,
 }
 SEARCH_OPTIONS = {
     "safe_search": True,

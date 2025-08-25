@@ -57,7 +57,7 @@ class CacheOptions(BaseModel):
 class DownloadWaitTimeOptions(BaseModel):
     timeout_for_each_url: int = Field(ge=1, le=3600)
     timeout_util_downloadable: int = Field(ge=1, le=86400)
-    min_wait_time_for_celery_dl: float = Field(ge=0, le=15)
+    min_wait_time_of_dl: float = Field(ge=0, le=15)
 
 
 def to_lower_keys(obj):

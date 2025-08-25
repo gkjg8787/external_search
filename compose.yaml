@@ -26,15 +26,3 @@ services:
     container_name: redis_broker
     ports:
       - "6379:6379"
-  worker_sofmap:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: worker_sofmap
-    command: celery -A tasks worker --loglevel=info --concurrency=1 -Q sofmap_work_queue
-    volumes:
-      - ./ex_search:/app/ex_search
-      - ./data/db:/app/db
-      - ./data/log:/app/log
-    depends_on:
-      - redis
