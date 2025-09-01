@@ -46,6 +46,8 @@ class SearchResultParser:
             result.release_date = self._get_release_date(elem)
             result.point = self._get_point(elem)
             result.condition = self._get_condition(elem)
+            if result.price > 0 and result.condition == "":
+                result.condition = "新品"
             result.used_list_url, result.stock_quantity, result.sub_price = (
                 self._get_stock_quantity(elem)
             )
