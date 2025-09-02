@@ -12,11 +12,10 @@ class ParseResult(BaseModel):
     url: str = ""
     sitename: str = IOSYS
     image_url: str = ""
-    category: str = ""
     manufacturer: str = ""
     release_date: str = ""
     accessories: str = ""
-    stock_quontity: str = ""
+    stock_quantity: str = ""
     sub_infos: dict = Field(default_factory=dict)
     detail_url: str = ""
 

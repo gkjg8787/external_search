@@ -25,33 +25,39 @@
   - 検索結果`https://www.sofmap.com/search_result.aspx`に対応。個別ページ`https://www.sofmap.com/product_detail.aspx`には非対応。akiba sofmap`https://a.sofmap.com/`も同様。
 - geo
   - 検索結果`https://ec.geo-online.co.jp/shop/goods/search.aspx`に対応。個別ページ`https://ec.geo-online.co.jp/shop/g/`には非対応。
+- iosys
+  - 検索結果`https://iosys.co.jp/items?q=`に対応。個別ページ`https://iosys.co.jp/items/`には非対応。
 
 [TOP](#概要)
+
 ## 前提
 
 - docker 導入済み
 
 [TOP](#概要)
+
 ## 起動
 
 - `docker compose up --build -d`
 
 [TOP](#概要)
+
 ## 使い方
 
 - api には検索の search と検索で使用するカテゴリー一覧の取得の search/info がある。
 
 [TOP](#概要)
+
 ### 検索
 
 - このサーバの`/api/search/`を POST し JSON でパラメータを指定する。
 
-| パラメータ名   | 説明                                 | 設定する値       | デフォルト |
-| -------------- | ------------------------------------ | ---------------- | ---------- |
-| url            | データを取得したい URL を直接指定    | 有効な URL       | null       |
-| search_keyword | URL を指定しない場合の検索キーワード | 検索したい文字列 | null       |
-| sitename       | 検索対象のサイト(必須)               | sofmap or geo    |            |
-| options        | 検索や動作のオプション               | dict 型          | {}         |
+| パラメータ名   | 説明                                 | 設定する値             | デフォルト |
+| -------------- | ------------------------------------ | ---------------------- | ---------- |
+| url            | データを取得したい URL を直接指定    | 有効な URL             |            |
+| search_keyword | URL を指定しない場合の検索キーワード | 検索したい文字列       |            |
+| sitename       | 検索対象のサイト(必須)               | sofmap or geo or iosys |            |
+| options        | 検索や動作のオプション               | dict 型                |            |
 
 - 応答は以下の形式で返ってくる。
   - 正常:`{"results":[] , "error_msg":""}`
@@ -59,6 +65,7 @@
   - 異常:`{"results":[], "error_msg":""}` または `{"detail":""}`としてメッセージエラーが乗って返る。
 
 [TOP](#概要)
+
 #### 検索の例
 
 - curl
@@ -108,6 +115,7 @@ curl -X 'POST' \
 ```
 
 [TOP](#概要)
+
 #### sofmap の検索オプション
 
 - sitename に sofmap を指定した際のオプションで`{"name":"value"}`の形で指定する。複数の場合は`{"name1":"value1", "name2":"value2"}`というようにカンマで区切る。value は型に合わせた書き方で。
@@ -126,11 +134,27 @@ curl -X 'POST' \
 | remove_duplicates        | 検索結果の重複を削除する。検索サイトにより動作が違う。sofmap は店舗名以外が同じ場合重複扱い。デフォルトは true で重複削除。                                  | true or false        | URL or keyword                          |
 
 [TOP](#概要)
+
 #### geo の検索オプション
 
 - ゲオには検索オプションなし。
 
 [TOP](#概要)
+
+#### iosys の検索オプション
+
+- sitename に iosys を指定した際のオプションで`{"name":"value"}`の形で指定する。複数の場合は`{"name1":"value1", "name2":"value2"}`というようにカンマで区切る。value は型に合わせた書き方で。
+- ページ指定はない
+
+| オプション名 | 説明                                                                       | 設定する値         |
+| ------------ | -------------------------------------------------------------------------- | ------------------ |
+| condition    | 商品の状態。新品/未使用品、中古（全般）、ランク A                          | new or used or a   |
+| sort         | 並び順。l:価格が安い順、h:価格が高い順、vh:在庫が多い順、vl:在庫が少ない順 | l or h or vh or vl |
+| min_price    | 下限価格                                                                   | 数値               |
+| max_price    | 上限価格                                                                   | 数値               |
+
+[TOP](#概要)
+
 #### Response のパラメータ
 
 - results の値の取得したデータの説明。価格がない場合は price:-1 になる。
@@ -166,7 +190,17 @@ curl -X 'POST' \
 | -------- | ---------------- | ------------ |
 | category | 対象のカテゴリー | 文字列       |
 
+- iosys の others
+  - 下記以外にも製品の種類により key-value が入る。例.`{"docomo":"", "volume":"64GB", "sim_size":"nanosim"}` , `{"top":"Win11搭載", "wifi":"Wi-Fiモデル"}`など
+
+| key 名       | 説明       | 設定される値 |
+| ------------ | ---------- | ------------ |
+| manufacturer | メーカー名 | 文字列       |
+| release_date | 発売日     | 日時         |
+| accessories  | 付属品     | 文字列       |
+
 [TOP](#概要)
+
 ### カテゴリー一覧の取得
 
 - `/api/search/info`を POST し JSON でパラメータを指定する。
@@ -179,12 +213,14 @@ curl -X 'POST' \
 | options      | オプション     | dict       |            |
 
 [TOP](#概要)
+
 #### カテゴリーのオプション
 
 - 現在オプションはアキバソフマップを対象にするかどうかの`is_akiba`のみ。<br>
   `{"is_akiba":true}`
 
 [TOP](#概要)
+
 #### カテゴリー一覧の取得例
 
 - curl

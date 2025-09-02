@@ -6,11 +6,13 @@ class SuppoertedDomain(Enum):
     SOFMAP = "www.sofmap.com"
     A_SOFMAP = "a.sofmap.com"
     GEO = "ec.geo-online.co.jp"
+    IOSYS = "iosys.co.jp"
 
 
 class SupportedSiteName(AutoLowerName):
     SOFMAP = auto()
     GEO = auto()
+    IOSYS = auto()
 
 
 class ActivityName(Enum):

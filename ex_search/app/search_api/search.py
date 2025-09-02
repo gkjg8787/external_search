@@ -31,6 +31,11 @@ from app.geo import (
     model_convert as geo_modelconvert,
     tasks as geo_tasks,
 )
+from app.iosys import (
+    urlgenerate as iosys_urlgenerate,
+    web_scraper as iosys_scraper,
+    model_convert as iosys_modelconvert,
+)
 from app.activitylog.update import UpdateActivityLog
 from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
 from .repository import URLDomainCacheRepository
@@ -135,6 +140,16 @@ class SearchClient:
                 )
                 sresults = (
                     geo_modelconvert.ModelConverter.parseresults_to_searchresults(
+                        results=parsed_result
+                    )
+                )
+                response = SearchResponse(**sresults.model_dump())
+            case SuppoertedDomain.IOSYS.value:
+                parsed_result = await iosys_scraper.parse_html(
+                    html=result.download_text, url=searchrequest.url
+                )
+                sresults = (
+                    iosys_modelconvert.ModelConverter.parseresults_to_searchresults(
                         results=parsed_result
                     )
                 )
@@ -282,6 +297,15 @@ class SearchClient:
                 case SuppoertedDomain.GEO.value:
                     ok, result = await geo_tasks.async_download_geo(url=target_url)
                     download_type = c_enums.DownloadType.SELENIUM.value
+                case SuppoertedDomain.IOSYS.value:
+                    ok, result = await iosys_scraper.get_html(
+                        iosys_scraper.GetCommandWithHttpx(
+                            url=target_url,
+                            timeout=dl_waittimeopts.timeout_for_each_url,
+                            delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                        )
+                    )
+                    download_type = c_enums.DownloadType.HTTPX.value
                 case _:
                     await domainrepo.save(
                         domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
@@ -319,10 +343,36 @@ class KeyWordToURL:
                 return await self._build_sofmap_url(searchrequest)
             case SupportedSiteName.GEO.value:
                 return await self._build_geo_url(searchrequest)
+            case SupportedSiteName.IOSYS.value:
+                return await self._build_iosys_url(searchrequest)
             case _:
                 raise ValueError(
                     f"not supported sitename : {searchrequest.sitename.lower()}"
                 )
+
+    async def _build_iosys_url(self, searchrequest: SearchRequest):
+        params = {
+            "search_keyword": searchrequest.search_keyword,
+        }
+        if searchrequest.options:
+            extraction_any_keys = [
+                "condition",
+                "sort",
+            ]
+            extraction_int_keys = [
+                "min_price",
+                "max_price",
+            ]
+            any_params = self._extract_params(
+                options=searchrequest.options, target_keys=extraction_any_keys
+            )
+            int_params = self._extract_params(
+                options=searchrequest.options,
+                target_keys=extraction_int_keys,
+                convert_value=lambda x: int(x),
+            )
+            params = params | any_params | int_params
+        return iosys_urlgenerate.build_search_url(**params)
 
     async def _build_geo_url(self, searchrequest: SearchRequest):
         params = {
