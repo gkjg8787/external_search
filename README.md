@@ -18,6 +18,9 @@
   - [カテゴリー一覧の取得](#カテゴリー一覧の取得)
     - [カテゴリーのオプション](#カテゴリーのオプション)
     - [カテゴリー一覧の取得例](#カテゴリー一覧の取得例)
+  - [gemini](#gemini)
+    - [gemini の検索オプション](#gemini-の検索オプション)
+    - [gemini の検索例](#gemini-の検索例)
 
 ## 対応サイト
 
@@ -26,7 +29,11 @@
 - geo
   - 検索結果`https://ec.geo-online.co.jp/shop/goods/search.aspx`に対応。個別ページ`https://ec.geo-online.co.jp/shop/g/`には非対応。
 - iosys
+
   - 検索結果`https://iosys.co.jp/items?q=`に対応。個別ページ`https://iosys.co.jp/items/`には非対応。
+
+- その他のサイト
+  - gemini api を使用して指定ページのパーサを作り、取得した情報を返す。パーサ作成に失敗したりもする。詳細は[gemini によるパーサ作成スクレイピング](#gemini)を参照。
 
 [TOP](#概要)
 
@@ -51,7 +58,7 @@
 
 ### 検索
 
-- このサーバの`/api/search/`を POST し JSON でパラメータを指定する。
+- このサーバの`/api/search/`を POST し JSON でパラメータを指定する。以下は必須パラメータ。
 
 | パラメータ名   | 説明                                 | 設定する値             | デフォルト |
 | -------------- | ------------------------------------ | ---------------------- | ---------- |
@@ -256,6 +263,105 @@ curl -X 'POST' \
     {
       "gid": "001020",
       "name": "ゲーミングPC・周辺機器"
+    },
+    : 多いので省略
+  ],
+  "error_msg": ""
+}
+```
+
+[TOP](#概要)
+
+### gemini
+
+- gemini api を使用したスクレイピング。直接 URL を AI にスクレイピングしてもらうのではなくパーサを作成してもらいそれを活用する。URL のダウンロードは selenium or httpx を使用するがボット対策などされているサイトの場合はダウンロードができないので対象外。
+- 使い方は[検索](#検索)と同じ API(`api/search`)を使用する。
+- ラベルに対してパーサを作成する。
+- パーサを新規作成時は時間がかかる。うまく作成できない場合は何度かやり直す必要がある。gemini api にはリクエスト制限があるので注意。
+
+| パラメータ名   | 説明                                                       | 設定する値 | デフォルト |
+| -------------- | ---------------------------------------------------------- | ---------- | ---------- |
+| url            | データを取得したい URL を直接指定                          | 有効な URL |            |
+| search_keyword | gemini では未使用だが必須。                                |            |            |
+| sitename       | gemini を指定。結果に入れるサイト名は options で設定する。 | gemini     |            |
+| options        | 検索や動作のオプション                                     | dict 型    |            |
+
+[TOP](#概要)
+
+#### gemini の検索オプション
+
+- gemini の options に設定するパラメータ。
+
+| オプション名    | 説明                                                                                                                  | 設定する値    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- | ------------- |
+| sitename        | 返却するアイテム情報に含むサイト名                                                                                    | 文字列        |
+| label           | 作成したパーサのラベル。別の URL、または同じ URL で作成済みの同じパーサを使いたい場合は一致したものにする必要がある。 | 文字列        |
+| recreate_parser | label で指定した作成済みパーサがある場合、再作成するかどうか。                                                        | true or false |
+| selenium        | ダウンロードする方法を selenium(chrome)を指定する場合のオプション。                                                   | dict          |
+
+- selenium のオプション
+
+| オプション名      | 説明                                                 | 設定する値    |
+| ----------------- | ---------------------------------------------------- | ------------- |
+| use_selenium      | true だと selenium を使用。                          | true or false |
+| wait_css_selector | 指定したタグ(css セレクタ)が描写されるまで待つ       | 文字列        |
+| page_load_timeout | ページの読み込みのタイムアウト秒                     | 数値          |
+| tag_wait_timeout  | wait_css_selector で指定したタグのタイムアウト秒     | 数値          |
+| page_wait_time    | wait_css_selector を指定しない場合の読み込み待ち時間 | 数値          |
+
+[TOP](#概要)
+
+#### gemini の検索例
+
+- curl
+
+```
+curl -X 'POST' \
+  'http://localhost:8060/api/search/' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "url": "https://used.sofmap.com/r/category/smp?categories1%5B%5D=smp",
+  "search_keyword": "",
+  "sitename": "gemini",
+  "options": {
+    "sitename":"sofmap",
+    "label":"https://used.sofmap.com/r/category/",
+    "recreate_parser":true,
+    "selenium":{
+        "use_selenium":true,
+        "wait_css_selector":"#search-result-div"
+    }
+  }
+}'
+```
+
+- response
+  - AI によるパーサ生成のため取得できる情報は異なる結果になる場合があります。
+
+```
+{
+  "results": [
+    {
+      "title": "〔中古品〕 Speed Wi-Fi 5G X12 NAR03SKU シャドーブラック SIMフリー",
+      "price": 5880,
+      "taxin": true,
+      "condition": "中古 (複数在庫あり)",
+      "on_sale": false,
+      "salename": "",
+      "is_success": true,
+      "url": "https://used.sofmap.com/r/category/smp?categories1%5B%5D=smp",
+      "sitename": "sofmap",
+      "image_url": "https://image.sofmap.com/images/product/large/2133058365680_1.jpg",
+      "stock_msg": "",
+      "stock_quantity": 3,
+      "sub_urls": [
+        "/r/item?_matome=0&categories1%5B%5D=smp&jan=4941787119393&_returnto=%2Fr%2Fcategory%2Fsmp%3Fcategories1%255B%255D%3Dsmp#product-search-matome"
+      ],
+      "shops_with_stock": null,
+      "others": {
+        "brand": "WIMAX"
+      }
     },
     : 多いので省略
   ],
