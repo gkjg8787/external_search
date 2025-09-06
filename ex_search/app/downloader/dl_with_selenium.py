@@ -1,4 +1,5 @@
 from urllib.parse import urlparse
+import time
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -24,6 +25,7 @@ def download_with_selenium(
     tag_wait_timeout: int,
     cookie_dict_list: list[dict] = [],
     wait_css_selector: str = "",
+    page_wait_time: float = 0,
 ) -> str:
     driver.set_page_load_timeout(page_load_timeout)
     if cookie_dict_list:
@@ -32,11 +34,12 @@ def download_with_selenium(
         )
 
     driver.get(url)
-    css_selector = wait_css_selector
+    if not wait_css_selector and page_wait_time > 0:
+        time.sleep(page_wait_time)
     try:
-        if css_selector:
+        if wait_css_selector:
             target_element = WebDriverWait(driver, tag_wait_timeout).until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, css_selector))
+                EC.visibility_of_element_located((By.CSS_SELECTOR, wait_css_selector))
             )
         html = driver.page_source
     except TimeoutException as e:
@@ -55,6 +58,7 @@ def download_remotely(
     selenium_url: str = "http://selenium:4444/wd/hub",
     cookie_dict_list: list[dict] = [],
     wait_css_selector: str = "",
+    page_wait_time: float = 0,
 ):
     driver = webdriver.Remote(
         command_executor=selenium_url,
@@ -67,4 +71,5 @@ def download_remotely(
         tag_wait_timeout=tag_wait_timeout,
         cookie_dict_list=cookie_dict_list,
         wait_css_selector=wait_css_selector,
+        page_wait_time=page_wait_time,
     )

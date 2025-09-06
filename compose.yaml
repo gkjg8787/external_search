@@ -3,6 +3,8 @@ services:
     build: ./
     ports:
       - "8060:8060"
+    env_file:
+      - .env
     volumes:
       - ./ex_search:/app/ex_search
       - ./data/db:/app/db

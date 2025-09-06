@@ -33,6 +33,7 @@
 ## 前提
 
 - docker 導入済み
+- .env ファイルを用意する。(※gemini api を使用する場合は`GEMINI_API_KEY`を.env に記述)
 
 [TOP](#概要)
 

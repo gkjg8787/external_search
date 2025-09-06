@@ -13,6 +13,7 @@ class SupportedSiteName(AutoLowerName):
     SOFMAP = auto()
     GEO = auto()
     IOSYS = auto()
+    GEMINI = auto()
 
 
 class ActivityName(Enum):

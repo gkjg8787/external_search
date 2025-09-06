@@ -8,3 +8,4 @@ selenium
 aiosqlite
 structlog
 redis
+google-genai

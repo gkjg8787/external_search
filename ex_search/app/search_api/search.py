@@ -36,6 +36,10 @@ from app.iosys import (
     web_scraper as iosys_scraper,
     model_convert as iosys_modelconvert,
 )
+from app.gemini_api import (
+    web_scraper as gemini_webscraper,
+    models as gemini_models,
+)
 from app.activitylog.update import UpdateActivityLog
 from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
 from .repository import URLDomainCacheRepository
@@ -155,13 +159,48 @@ class SearchClient:
                 )
                 response = SearchResponse(**sresults.model_dump())
             case _:
-                await upactlog.failed(
-                    id=tasklog_id,
-                    error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
+                if searchrequest.sitename.lower() != SupportedSiteName.GEMINI.value:
+                    await upactlog.failed(
+                        id=tasklog_id,
+                        error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
+                    )
+                    return SearchResponse(
+                        error_msg=f"not supported domain : {parsed_url.netloc}"
+                    )
+
+                geminiopts = gemini_models.AskGeminiOptions(**searchrequest.options)
+                sitename = geminiopts.sitename or parsed_url.netloc
+                label = (
+                    geminiopts.label
+                    or parsed_url._replace(params="", query="", fragment="").geturl()
                 )
-                return SearchResponse(
-                    error_msg=f"not supported domain : {parsed_url.netloc}"
-                )
+                try:
+                    sresults = await gemini_webscraper.parse_html_and_convert(
+                        html=result.download_text,
+                        url=searchrequest.url,
+                        label=label,
+                        session=self.session,
+                        sitename=sitename,
+                        remove_duplicates=remove_duplicates,
+                        recreate=geminiopts.recreate_parser,
+                    )
+                except Exception as e:
+                    await upactlog.failed(
+                        id=tasklog_id,
+                        error_msg=f"parse error. {type(e).__name__}, {e}",
+                    )
+                    return SearchResponse(
+                        error_msg=f"parse error. {type(e).__name__}, {e}"
+                    )
+                if not sresults:
+                    await upactlog.failed(
+                        id=tasklog_id,
+                        error_msg=f"parse error. sresults is None",
+                    )
+                    return SearchResponse(error_msg=f"parse error. sresults is None")
+
+                response = SearchResponse(**sresults.model_dump())
+
         if not result.id:
             cacheopts = read_config.get_cache_options()
             if cacheopts.expires:
@@ -307,10 +346,16 @@ class SearchClient:
                     )
                     download_type = c_enums.DownloadType.HTTPX.value
                 case _:
-                    await domainrepo.save(
-                        domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
+                    if searchrequest.sitename.lower() != SupportedSiteName.GEMINI.value:
+                        await domainrepo.save(
+                            domain=parsed_url.netloc,
+                            status=URLDomainStatus.FAILED.value,
+                        )
+                        return False, f"not supported domain : {parsed_url.netloc}"
+
+                    ok, result, download_type = await self._download_html_for_gemini(
+                        converted_url=converted_url, dl_waittimeopts=dl_waittimeopts
                     )
-                    return False, f"not supported domain : {parsed_url.netloc}"
             if not ok:
                 await domainrepo.save(
                     domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
@@ -326,6 +371,33 @@ class SearchClient:
                 download_text=result,
             )
             return ok, searchcache
+
+    async def _download_html_for_gemini(
+        self, converted_url: str, dl_waittimeopts: read_config.DownloadWaitTimeOptions
+    ):
+        geminiopts = gemini_models.AskGeminiOptions(**self.searchrequest.options)
+        selenium_opt = read_config.get_selenium_options()
+        if geminiopts.selenium and geminiopts.selenium.use_selenium:
+            ok, result = await gemini_webscraper.get_html_with_selenium(
+                command=gemini_webscraper.GetCommandWithSelenium(
+                    url=converted_url,
+                    wait_css_selector=geminiopts.selenium.wait_css_selector,
+                    page_load_timeout=geminiopts.selenium.page_load_timeout,
+                    tag_wait_timeout=geminiopts.selenium.tag_wait_timeout,
+                    selenium_url=selenium_opt.remote_url,
+                    page_wait_time=geminiopts.selenium.page_wait_time,
+                )
+            )
+            return ok, result, c_enums.DownloadType.SELENIUM.value
+        else:
+            ok, result = await gemini_webscraper.get_html(
+                command=gemini_webscraper.GetCommandWithHttpx(
+                    url=converted_url,
+                    timout=dl_waittimeopts.timeout_for_each_url,
+                    delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                )
+            )
+            return ok, result, c_enums.DownloadType.HTTPX.value
 
 
 class KeyWordToURL:
