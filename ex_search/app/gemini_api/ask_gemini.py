@@ -1,14 +1,10 @@
 import re
 import pathlib
 import inspect
-from typing import Any, List, Dict
-from urllib.parse import urljoin
-
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from google import genai
 from google.genai import types
-from bs4 import BeautifulSoup
 
 from .models import AskGeminiResult, AskGeminiErrorInfo, ResultItems
 from .parserlog import UpdateParserLog
@@ -23,6 +19,7 @@ model_ids = {
     "image": "gemini-2.5-flash-image-preview",
 }
 CLASS_NAME_PATTERN = re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
+IMPORT_PATTERN = re.compile(r"(?:from\s+(\S+)\s+import\s+(\S+))|(?:import\s+(\S+))")
 
 
 class ParserRequestPrompt:
@@ -75,14 +72,14 @@ class ParserGenerator:
             class_type = None
             subinfo["recreate"] = True
         else:
-            class_type = await self._get_saved_parser()
+            class_type, exec_scope = await self._get_saved_parser()
 
         if class_type is None:
             client = genai.Client()
             result_dict = await self._request_parser(client=client)
             if isinstance(result_dict, AskGeminiErrorInfo):
                 return AskGeminiResult(error_info=result_dict)
-            class_type = await self._get_parser_class(result_dict)
+            class_type, exec_scope = await self._get_parser_class(result_dict)
             log = await self._save_log(response=result_dict, error_info=None)
         else:
             log = await self.update_parserlog.get_log(
@@ -98,6 +95,15 @@ class ParserGenerator:
             )
             return AskGeminiResult(error_info=error_info)
         try:
+            for k, v in exec_scope.items():
+                if k == class_type.__name__:
+                    continue
+                if k in globals():
+                    continue
+                if inspect.isclass(v):
+                    globals()[k] = v
+                elif inspect.ismodule(v):
+                    globals()[k] = v
             parser_instance = class_type(self.html_str)
             parsed_result = parser_instance.execute()
             if not isinstance(parsed_result, list):
@@ -118,10 +124,9 @@ class ParserGenerator:
             label=self.label, target_url=self.target_url, is_error=False
         )
         if not latest_log:
-            return None
+            return None, {}
 
-        class_type = await self._get_parser_class(latest_log.response)
-        return class_type
+        return await self._get_parser_class(latest_log.response)
 
     async def _save_log(
         self, response: dict, error_info: None | AskGeminiErrorInfo, subinfo: dict = {}
@@ -157,7 +162,7 @@ class ParserGenerator:
         except Exception as e:
             return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
 
-    async def _get_parser_class(self, result: dict) -> type | None:
+    async def _get_parser_class(self, result: dict) -> tuple[type | None, dict]:
         if not result.get("candidates"):
             return None
 
@@ -172,5 +177,5 @@ class ParserGenerator:
             cname = CLASS_NAME_PATTERN.findall(new_part)[0]
             MyClass = exec_scope.get(cname)
             if MyClass is not None and inspect.isclass(MyClass):
-                return MyClass
-        return None
+                return MyClass, exec_scope
+        return None, {}
