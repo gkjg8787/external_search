@@ -84,7 +84,21 @@ class SearchClient:
                     subinfo=init_subinfo,
                 )
                 return SearchResponse(error_msg=str(e))
+
         parsed_url = urlparse(searchrequest.url)
+        if not parsed_url.netloc or parsed_url.scheme not in ["http", "https"]:
+            error_msg = f"invalid url : {searchrequest.url}"
+            await upactlog.create(
+                target_id=str(uuid.uuid4()),
+                target_table="None",
+                activity_type=ActivityName.SearchClient.value,
+                status=act_enums.UpdateStatus.FAILED.name,
+                caller_type=self.caller_type,
+                error_msg=error_msg,
+                subinfo=init_subinfo,
+            )
+            return SearchResponse(error_msg=error_msg)
+
         match parsed_url.netloc:
             case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
                 if searchrequest.options.get("convert_to_direct_search"):
