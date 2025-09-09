@@ -282,7 +282,8 @@ curl -X 'POST' \
 | パラメータ名   | 説明                                                       | 設定する値 | デフォルト |
 | -------------- | ---------------------------------------------------------- | ---------- | ---------- |
 | url            | データを取得したい URL を直接指定                          | 有効な URL |            |
-| search_keyword | gemini では未使用だが必須。                                |            |            |
+| search_keyword | gemini では未使用。                                        |
+|                |                                                            |
 | sitename       | gemini を指定。結果に入れるサイト名は options で設定する。 | gemini     |            |
 | options        | 検索や動作のオプション                                     | dict 型    |            |
 
@@ -297,7 +298,7 @@ curl -X 'POST' \
 | sitename        | 返却するアイテム情報に含むサイト名                                                                                    | 文字列        |
 | label           | 作成したパーサのラベル。別の URL、または同じ URL で作成済みの同じパーサを使いたい場合は一致したものにする必要がある。 | 文字列        |
 | recreate_parser | label で指定した作成済みパーサがある場合、再作成するかどうか。                                                        | true or false |
-| selenium        | ダウンロードする方法を selenium(chrome)を指定する場合のオプション。                                                   | dict          |
+| selenium        | ダウンロードする方法を selenium に指定する場合のオプション。                                                          | dict          |
 
 - selenium のオプション
 
