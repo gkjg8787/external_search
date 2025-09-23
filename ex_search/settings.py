@@ -19,6 +19,9 @@ REDIS_OPTIONS = {
 SELENIUM_OPTIONS = {
     "REMOTE_URL": "http://selenium:4444/wd/hub",
 }
+NODRIVER_API_OPTIONS = {
+    "base_url": "http://nodriver:8090",
+}
 SOFMAP_OPTIONS = {
     "selenium": {
         "PAGE_LOAD_TIMEOUT": 30,

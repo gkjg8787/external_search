@@ -6,7 +6,7 @@ from app.downloader import async_get
 
 class GetCommandWithHttpx(BaseModel):
     url: str
-    timout: float = 5
+    timeout: float = 5
     delay_seconds: int = 1
 
 
@@ -14,7 +14,7 @@ async def get_html(command: GetCommandWithHttpx):
     try:
         result = await async_get(
             url=command.url,
-            timeout=command.timout,
+            timeout=command.timeout,
             delay_seconds=command.delay_seconds,
         )
         return True, result

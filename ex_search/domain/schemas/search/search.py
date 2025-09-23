@@ -1,11 +1,81 @@
+from typing import Any, Optional
 from pydantic import BaseModel, Field
+from .constants import INIT_PAGE_LOAD_TIMEOUT, INIT_TAG_WAIT_TIMEOUT
+
+
+class ErrorDetail(BaseModel):
+    error_msg: str = ""
+    error_type: str = ""
+
+
+class Cookie(BaseModel):
+    cookie_dict_list: Optional[list[dict[str, Any]]] = None
+    return_cookies: Optional[bool] = False
+
+
+class OnError(BaseModel):
+    action_type: str = "raise"  # "raise" or "retry"
+    max_retries: int = 0
+    wait_time: float = 0.0  # seconds
+    check_exist_tag: str = ""  # CSS selector
+
+
+class WaitCSSSelector(BaseModel):
+    selector: str
+    timeout: Optional[int] = 10  # seconds
+    on_error: Optional[OnError] = OnError()
+    pre_wait_time: Optional[float] = 0.0  # seconds
+
+
+class NodriverOptions(BaseModel):
+    cookie: Optional[Cookie] = None
+    wait_css_selector: Optional[WaitCSSSelector] = None
+    page_wait_time: Optional[float] = None
+
+
+class GeminiWaitOptions(BaseModel):
+    wait_css_selector: str = ""
+    page_load_timeout: int = Field(default=INIT_PAGE_LOAD_TIMEOUT, ge=2, le=100)
+    tag_wait_timeout: int = Field(default=INIT_TAG_WAIT_TIMEOUT, ge=1, le=99)
+    page_wait_time: float = Field(default=0, ge=0, le=30)
+
+
+class AskGeminiOptions(BaseModel, extra="ignore"):
+    sitename: str = ""
+    label: str = ""
+    selenium: GeminiWaitOptions | None = None
+    nodriver: NodriverOptions | None = None
+    recreate_parser: bool = False
+    exclude_script: bool = True
+    compress_whitespace: bool = False
+
+
+class IosysOptions(BaseModel):
+    condition: str | None = None
+    sort: str | None = None
+    min_price: int | None = None
+    max_price: int | None = None
+
+
+class SofmapOptions(BaseModel):
+    convert_to_direct_search: bool = False
+    remove_duplicates: bool = True
+    is_akiba: bool = False
+    direct_search: bool = False
+    product_type: str | None = None
+    gid: str | None = None
+    order_by: str | None = None
+    category: str | None = None
+    display_count: int | None = None
 
 
 class SearchRequest(BaseModel):
     url: str | None = Field(default=None)
     search_keyword: str | None = Field(default=None)
     sitename: str
-    options: dict = Field(default_factory=dict)
+    options: SofmapOptions | IosysOptions | AskGeminiOptions | dict = Field(
+        default_factory=dict
+    )
 
 
 class SearchResult(BaseModel):

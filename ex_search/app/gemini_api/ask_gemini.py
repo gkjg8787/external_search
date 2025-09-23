@@ -5,11 +5,13 @@ import inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from google import genai
 from google.genai import types
+import structlog
 
 from .models import AskGeminiResult, AskGeminiErrorInfo, ResultItems
 from .parserlog import UpdateParserLog
 from domain.models.ai import repository as a_repo
 
+logger = structlog.get_logger(__name__)
 
 model_ids = {
     "pro": "gemini-2.5-pro",
@@ -28,7 +30,7 @@ class ParserRequestPrompt:
     def __init__(
         self,
         first_prompt_fpath: str = str(
-            pathlib.Path(__file__).resolve().parent / "first_prompt.md"
+            pathlib.Path(__file__).resolve().parent / "create_parser_prompt.md"
         ),
     ):
         self.first_prompt_fpath = first_prompt_fpath
@@ -79,8 +81,8 @@ class ParserGenerator:
             result_dict = await self._request_parser(client=client)
             if isinstance(result_dict, AskGeminiErrorInfo):
                 return AskGeminiResult(error_info=result_dict)
-            class_type, exec_scope = await self._get_parser_class(result_dict)
             log = await self._save_log(response=result_dict, error_info=None)
+            class_type, exec_scope = await self._get_parser_class(result_dict)
         else:
             log = await self.update_parserlog.get_log(
                 label=self.label, target_url=self.target_url, is_error=False
@@ -100,10 +102,11 @@ class ParserGenerator:
                     continue
                 if k in globals():
                     continue
-                if inspect.isclass(v):
-                    globals()[k] = v
-                elif inspect.ismodule(v):
-                    globals()[k] = v
+                if k == "annotations":
+                    continue
+                globals()[k] = v
+                logger.debug(f"imported {k} to globals")
+
             parser_instance = class_type(self.html_str)
             parsed_result = parser_instance.execute()
             if not isinstance(parsed_result, list):
@@ -167,13 +170,17 @@ class ParserGenerator:
             return None
 
         for part in result["candidates"][0]["content"]["parts"]:
-            if "```python" not in part["text"]:
+            if not part["text"] or "```python" not in part["text"]:
                 continue
             lines = part["text"].splitlines()
             trim_lines = lines[1:-1]
-            new_part = "\n".join(trim_lines)
+            new_part = "\n".join(["from __future__ import annotations"] + trim_lines)
             exec_scope = {}
-            exec(new_part, globals(), exec_scope)
+            try:
+                exec(new_part, globals(), exec_scope)
+            except Exception:
+                logger.exception("parser exec error")
+                return None, {}
             cname = CLASS_NAME_PATTERN.findall(new_part)[0]
             MyClass = exec_scope.get(cname)
             if MyClass is not None and inspect.isclass(MyClass):

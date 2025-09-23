@@ -13,3 +13,4 @@ class OrderStatus(AutoUpperName):
 class DownloadType(AutoUpperName):
     HTTPX = auto()
     SELENIUM = auto()
+    NODRIVER = auto()

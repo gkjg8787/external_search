@@ -37,11 +37,14 @@ class UpdateParserLog:
 
     async def get_log(
         self,
+        id: int | None = None,
         label: str = "",
         target_url: str = "",
         is_error: bool | None = None,
     ) -> m_ailog.ParserGenerationLog | None:
-        if label:
+        if id:
+            command = a_cmd.ParserGenerationLogGetCommand(id=id, is_error=is_error)
+        elif label:
             command = a_cmd.ParserGenerationLogGetCommand(
                 label=label, is_error=is_error
             )

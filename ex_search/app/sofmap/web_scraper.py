@@ -19,7 +19,7 @@ class GetCommandWithSelenium(BaseModel):
 class GetCommandWithHttpx(BaseModel):
     url: str
     is_ucaa: bool = Field(default=False)
-    timout: float = 5
+    timeout: float = 5
     delay_seconds: int = 1
 
 
@@ -69,7 +69,7 @@ async def get_html(command: GetCommandWithHttpx):
     try:
         result = await async_get(
             url=command.url,
-            timeout=command.timout,
+            timeout=command.timeout,
             delay_seconds=command.delay_seconds,
             cookie_dict_list=cookie_dict_list,
         )

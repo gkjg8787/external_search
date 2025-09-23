@@ -9,6 +9,10 @@ class SeleniumOptions(BaseModel):
     remote_url: str
 
 
+class NodriverOptions(BaseModel):
+    base_url: str
+
+
 class SelenimuTimeoutOptions(BaseModel):
     page_load_timeout: int = Field(ge=2, le=100)
     tag_wait_timeout: int = Field(ge=1, le=99)
@@ -83,6 +87,11 @@ def to_lower_keys(obj):
 def get_selenium_options():
     lower_key_dict = to_lower_keys(settings.SELENIUM_OPTIONS)
     return SeleniumOptions(**lower_key_dict)
+
+
+def get_nodriver_options():
+    lower_key_dict = to_lower_keys(settings.NODRIVER_API_OPTIONS)
+    return NodriverOptions(**lower_key_dict)
 
 
 def get_sofmap_options():

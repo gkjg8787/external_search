@@ -8,6 +8,9 @@ from routers import (
 from databases.redis.util import get_async_redis
 from app.search_api.repository import URLDomainCacheRepository
 from databases.sql.create_table import create_table
+from common.logger_config import configure_logger
+
+configure_logger(filename="app.log", logging_level="INFO")
 
 
 @asynccontextmanager

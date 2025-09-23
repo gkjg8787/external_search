@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from bs4 import BeautifulSoup
 
 from app.downloader import download_remotely, async_get
+from app.downloader import dl_with_nodriver_api as nodriver_api
 from .ask_gemini import ParserGenerator
 from .model_convert import ModelConverter
 from domain.schemas.search import search
@@ -21,8 +22,35 @@ class GetCommandWithSelenium(BaseModel):
 
 class GetCommandWithHttpx(BaseModel):
     url: str
-    timout: float = 5
+    timeout: float = 5
     delay_seconds: int = 1
+
+
+class GetCommandWithNodriver(GetCommandWithHttpx):
+    url: str
+    timeout: float = 30
+    delay_seconds: int = 2
+    nodriver_options: search.NodriverOptions = search.NodriverOptions()
+    max_retries: int = 0
+
+
+async def get_html_with_nodriver_api(command: GetCommandWithNodriver):
+    try:
+        result = await nodriver_api.get_from_nodriver_api(
+            url=command.url,
+            nodriver_options=command.nodriver_options,
+            timeout=command.timeout,
+            max_retries=command.max_retries,
+            delay_seconds=command.delay_seconds,
+        )
+        if result.error.error_msg:
+            return (
+                False,
+                f"nodriver api error, type:{result.error.error_type}, message:{result.error.error_msg}",
+            )
+        return True, result.result
+    except Exception as e:
+        return False, f"nodriver api exception, type:{type(e).__name__}, message:{e}"
 
 
 async def get_html_with_selenium(command: GetCommandWithSelenium):
@@ -41,7 +69,10 @@ async def get_html_with_selenium(command: GetCommandWithSelenium):
     try:
         html = download_remotely(**params)
     except Exception as e:
-        return False, f"download error, {e} , url:{command.url}"
+        return (
+            False,
+            f"selenium download error, type:{type(e).__name__}, message:{e} , url:{command.url}",
+        )
     return True, html
 
 
@@ -49,22 +80,39 @@ async def get_html(command: GetCommandWithHttpx):
     try:
         result = await async_get(
             url=command.url,
-            timeout=command.timout,
+            timeout=command.timeout,
             delay_seconds=command.delay_seconds,
         )
         return True, result
     except Exception as e:
-        return False, str(e)
+        return False, f"download error, type:{type(e).__name__}, message:{e}"
 
 
-async def parse_html(
+def exclude_script_tags(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for script in soup(["script", "style"]):
+        script.decompose()
+    return str(soup)
+
+
+def compress_whitespace_in_html(html: str) -> str:
+    return " ".join(html.split())
+
+
+async def _parse_html(
     html: str,
     url: str,
     label: str,
     session: AsyncSession,
     pg_repository: m_ia_repo.IParserGenerationLogRepository,
     recreate: bool = False,
+    exclude_script: bool = True,
+    compress_whitespace: bool = False,
 ):
+    if exclude_script:
+        html = exclude_script_tags(html)
+    if compress_whitespace:
+        html = compress_whitespace_in_html(html)
     sparser = ParserGenerator(
         html_str=html,
         label=label,
@@ -85,14 +133,18 @@ async def parse_html_and_convert(
     sitename: str = "",
     remove_duplicates: bool = True,
     recreate: bool = False,
+    exclude_script: bool = True,
+    compress_whitespace: bool = False,
 ) -> search.SearchResults | None:
-    parsed_result = await parse_html(
+    parsed_result = await _parse_html(
         html=html,
         url=url,
         label=label,
         session=session,
         pg_repository=ai_repo.ParserGenerationLogRepository(session),
         recreate=recreate,
+        exclude_script=exclude_script,
+        compress_whitespace=compress_whitespace,
     )
     if not parsed_result:
         return None

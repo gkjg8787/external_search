@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 from common import read_config
-from domain.schemas.search import SearchRequest, SearchResponse
+from domain.schemas.search import (
+    SearchRequest,
+    SearchResponse,
+    AskGeminiOptions,
+    SofmapOptions,
+)
 from domain.models.cache import (
     cache as c_cache,
     command as c_cmd,
@@ -36,10 +41,8 @@ from app.iosys import (
     web_scraper as iosys_scraper,
     model_convert as iosys_modelconvert,
 )
-from app.gemini_api import (
-    web_scraper as gemini_webscraper,
-    models as gemini_models,
-)
+from app.gemini_api import web_scraper as gemini_webscraper
+
 from app.activitylog.update import UpdateActivityLog
 from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
 from .repository import URLDomainCacheRepository
@@ -68,7 +71,7 @@ class SearchClient:
     async def execute(self) -> SearchResponse:
         searchrequest: SearchRequest = self.searchrequest
         upactlog = UpdateActivityLog(ses=self.session)
-        init_subinfo = {"request": searchrequest.model_dump()}
+        init_subinfo = {"request": searchrequest.model_dump(exclude_none=True)}
         if searchrequest.search_keyword and not searchrequest.url:
             urlgenerator = KeyWordToURL(ses=self.session, searchrequest=searchrequest)
             try:
@@ -101,7 +104,10 @@ class SearchClient:
 
         match parsed_url.netloc:
             case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
-                if searchrequest.options.get("convert_to_direct_search"):
+                if (
+                    isinstance(searchrequest.options, SofmapOptions)
+                    and searchrequest.options.convert_to_direct_search
+                ):
                     converted_url = sofmap_urlgenerate.convert_to_direct_search(
                         url=searchrequest.url
                     )
@@ -132,17 +138,19 @@ class SearchClient:
             )
             return SearchResponse(error_msg=result)
         add_subinfo = {}
-        if searchrequest.options.get(
-            "remove_duplicates"
-        ) is None or searchrequest.options.get("remove_duplicates"):
+        if (
+            isinstance(searchrequest.options, SofmapOptions)
+            and searchrequest.options.remove_duplicates
+        ):
             remove_duplicates = True
             add_subinfo["remove_duplicates"] = True
         else:
             remove_duplicates = False
             add_subinfo["remove_duplicates"] = False
 
-        match parsed_url.netloc:
-            case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
+        sitename = searchrequest.sitename.lower()
+        match sitename:
+            case SupportedSiteName.SOFMAP.value:
                 parsed_result = await sofmap_scraper.parse_html(
                     html=result.download_text, url=searchrequest.url
                 )
@@ -152,7 +160,7 @@ class SearchClient:
                     )
                 )
                 response = SearchResponse(**sresults.model_dump())
-            case SuppoertedDomain.GEO.value:
+            case SupportedSiteName.GEO.value:
                 parsed_result = await geo_scraper.parse_html(
                     html=result.download_text, url=searchrequest.url
                 )
@@ -162,7 +170,7 @@ class SearchClient:
                     )
                 )
                 response = SearchResponse(**sresults.model_dump())
-            case SuppoertedDomain.IOSYS.value:
+            case SupportedSiteName.IOSYS.value:
                 parsed_result = await iosys_scraper.parse_html(
                     html=result.download_text, url=searchrequest.url
                 )
@@ -172,18 +180,12 @@ class SearchClient:
                     )
                 )
                 response = SearchResponse(**sresults.model_dump())
-            case _:
-                if searchrequest.sitename.lower() != SupportedSiteName.GEMINI.value:
-                    await upactlog.failed(
-                        id=tasklog_id,
-                        error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
-                    )
-                    return SearchResponse(
-                        error_msg=f"not supported domain : {parsed_url.netloc}"
-                    )
-
-                geminiopts = gemini_models.AskGeminiOptions(**searchrequest.options)
-                sitename = geminiopts.sitename or parsed_url.netloc
+            case SupportedSiteName.GEMINI.value:
+                if isinstance(searchrequest.options, AskGeminiOptions):
+                    geminiopts = searchrequest.options
+                else:
+                    geminiopts = AskGeminiOptions(**searchrequest.options)
+                p_sitename = geminiopts.sitename or parsed_url.netloc
                 label = (
                     geminiopts.label
                     or parsed_url._replace(params="", query="", fragment="").geturl()
@@ -194,9 +196,11 @@ class SearchClient:
                         url=searchrequest.url,
                         label=label,
                         session=self.session,
-                        sitename=sitename,
+                        sitename=p_sitename,
                         remove_duplicates=remove_duplicates,
                         recreate=geminiopts.recreate_parser,
+                        exclude_script=geminiopts.exclude_script,
+                        compress_whitespace=geminiopts.compress_whitespace,
                     )
                 except Exception as e:
                     await upactlog.failed(
@@ -214,6 +218,14 @@ class SearchClient:
                     return SearchResponse(error_msg=f"parse error. sresults is None")
 
                 response = SearchResponse(**sresults.model_dump())
+            case _:
+                await upactlog.failed(
+                    id=tasklog_id,
+                    error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
+                )
+                return SearchResponse(
+                    error_msg=f"not supported domain : {parsed_url.netloc}"
+                )
 
         if not result.id:
             cacheopts = read_config.get_cache_options()
@@ -389,9 +401,12 @@ class SearchClient:
     async def _download_html_for_gemini(
         self, converted_url: str, dl_waittimeopts: read_config.DownloadWaitTimeOptions
     ):
-        geminiopts = gemini_models.AskGeminiOptions(**self.searchrequest.options)
+        if isinstance(self.searchrequest.options, AskGeminiOptions):
+            geminiopts = self.searchrequest.options
+        else:
+            geminiopts = AskGeminiOptions(**self.searchrequest.options)
         selenium_opt = read_config.get_selenium_options()
-        if geminiopts.selenium and geminiopts.selenium.use_selenium:
+        if geminiopts.selenium:
             ok, result = await gemini_webscraper.get_html_with_selenium(
                 command=gemini_webscraper.GetCommandWithSelenium(
                     url=converted_url,
@@ -403,11 +418,19 @@ class SearchClient:
                 )
             )
             return ok, result, c_enums.DownloadType.SELENIUM.value
+        elif geminiopts.nodriver:
+            ok, result = await gemini_webscraper.get_html_with_nodriver_api(
+                command=gemini_webscraper.GetCommandWithNodriver(
+                    url=converted_url,
+                    nodriver_options=geminiopts.nodriver,
+                )
+            )
+            return ok, result, c_enums.DownloadType.NODRIVER.value
         else:
             ok, result = await gemini_webscraper.get_html(
                 command=gemini_webscraper.GetCommandWithHttpx(
                     url=converted_url,
-                    timout=dl_waittimeopts.timeout_for_each_url,
+                    timeout=dl_waittimeopts.timeout_for_each_url,
                     delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
                 )
             )
@@ -449,11 +472,15 @@ class KeyWordToURL:
                 "min_price",
                 "max_price",
             ]
+            if not isinstance(searchrequest.options, dict):
+                target_options = searchrequest.options.model_dump(exclude_none=True)
+            else:
+                target_options = searchrequest.options
             any_params = self._extract_params(
-                options=searchrequest.options, target_keys=extraction_any_keys
+                options=target_options, target_keys=extraction_any_keys
             )
             int_params = self._extract_params(
-                options=searchrequest.options,
+                options=target_options,
                 target_keys=extraction_int_keys,
                 convert_value=lambda x: int(x),
             )
@@ -479,15 +506,19 @@ class KeyWordToURL:
                 "order_by",
             ]
             extraction_int_keys = ["display_count"]
+            if not isinstance(searchrequest.options, dict):
+                target_options = searchrequest.options.model_dump(exclude_none=True)
+            else:
+                target_options = searchrequest.options
             any_params = self._extract_params(
-                options=searchrequest.options, target_keys=extraction_any_keys
+                options=target_options, target_keys=extraction_any_keys
             )
             int_params = self._extract_params(
-                options=searchrequest.options,
+                options=target_options,
                 target_keys=extraction_int_keys,
                 convert_value=lambda x: int(x),
             )
-            category_name = searchrequest.options.get("category")
+            category_name = target_options.get("category")
             if not any_params.get("gid") and category_name:
                 gid = await sofmap_category.get_category_id(
                     ses=self.session,

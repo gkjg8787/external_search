@@ -21,6 +21,7 @@ def configure_logger(
 ):
     structlog.configure(
         processors=[
+            structlog.contextvars.merge_contextvars,
             structlog.processors.StackInfoRenderer(),
             structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M.%S", utc=True),
             structlog.processors.UnicodeDecoder(),
