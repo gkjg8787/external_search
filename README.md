@@ -66,7 +66,7 @@
 | search_keyword | URL を指定しない場合の検索キーワード | 検索したい文字列       |            |
 | sitename       | 検索対象のサイト(必須)               | sofmap or geo or iosys |            |
 | options        | 検索や動作のオプション               | dict 型                |            |
-| no_cache       | キャッシュを使用しない               | true or false          | false      |
+| no_cache       | HTMLダウンロード時、キャッシュを使用しない               | true or false          | false      |
 
 - 応答は以下の形式で返ってくる。
   - 正常:`{"results":[] , "error_msg":""}`
@@ -287,6 +287,7 @@ curl -X 'POST' \
 |                |                                                            |
 | sitename       | gemini を指定。結果に入れるサイト名は options で設定する。 | gemini     |            |
 | options        | 検索や動作のオプション                                     | dict 型    |            |
+| no_cache       | HTMLダウンロード時、キャッシュを使用しない               | true or false          | false      |
 
 [TOP](#概要)
 
