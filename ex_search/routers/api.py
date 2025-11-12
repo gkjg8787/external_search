@@ -16,8 +16,10 @@ from domain.schemas.search import (
     SearchResponse,
     InfoResponse,
     InfoRequest,
+    DownloadRequest,
+    DownLoadResponse,
 )
-from app.search_api.search import SearchClient
+from app.search_api.search import SearchClient, HTMLDownloader
 from app.search_api.info import SearchInfo
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -100,3 +102,50 @@ async def api_get_search_info(
         log.error("Info execution failed", error_type=type(e).__name__, error=str(e))
         raise HTTPException(status_code=404, detail=str(e))
     return response
+
+
+@router.post(
+    "/download/",
+    response_model=DownLoadResponse,
+    description="渡された値から対象のURLのHTMLを返します。",
+)
+async def api_get_download_result(
+    request: Request,
+    downloadreq: DownloadRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        router_path=request.url.path,
+        request_id=str(uuid.uuid4()),
+    )
+    log = structlog.get_logger(__name__)
+    log.info("API Download called", downloadreq=downloadreq)
+
+    cache_options = get_cache_options()
+    log.debug("Cache options", options=cache_options)
+    if cache_options.backend == "redis":
+        searchcache_repo = redis_cache_repo.SearchCacheRedisRepository(
+            r=get_async_redis(),
+            expiry_seconds=cache_options.expires,
+        )
+    else:
+        searchcache_repo = sql_cache_repo.SearchCacheRepository(ses=db)
+
+    downloader = HTMLDownloader(
+        downloadrequest=downloadreq,
+        searchcache_repository=searchcache_repo,
+        converted_url=downloadreq.url,
+    )
+
+    try:
+        ok, result = await downloader.execute()
+    except Exception as e:
+        log.error(
+            "Download execution failed", error_type=type(e).__name__, error=str(e)
+        )
+        raise HTTPException(status_code=404, detail=str(e))
+    if ok:
+        return DownLoadResponse(value=result.searchcache.download_text)
+    else:
+        return DownLoadResponse(error_msg=result.error_msg)

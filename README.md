@@ -66,6 +66,7 @@
 | search_keyword | URL を指定しない場合の検索キーワード | 検索したい文字列       |            |
 | sitename       | 検索対象のサイト(必須)               | sofmap or geo or iosys |            |
 | options        | 検索や動作のオプション               | dict 型                |            |
+| no_cache       | キャッシュを使用しない               | true or false          | false      |
 
 - 応答は以下の形式で返ってくる。
   - 正常:`{"results":[] , "error_msg":""}`
@@ -302,6 +303,7 @@ curl -X 'POST' \
 | nodriver            | ダウンロードする方法を nodriver_api に指定する場合のオプション                                                        | dict          |
 | exclude_script      | ダウンロードした HTML から script タグと style タグを削除する。gemini へ送る際のトークン削減になる。                  | true or false |
 | compress_whitespace | ダウンロードした HTML の空白を圧縮する。                                                                              | true or false |
+| prompt              | パーサ作成時のプロンプトのオプション                                                                                      | dict          |
 
 - selenium のオプション
 
@@ -322,9 +324,11 @@ curl -X 'POST' \
 
 - cookie のオプション
 
-| オプション名     | 説明            | 設定する値 |
-| ---------------- | --------------- | ---------- |
-| cookie_dict_list | cookie のリスト | list[dict] |
+| オプション名     | 説明              | 設定する値    |
+| ---------------- | ----------------- | ------------- |
+| cookie_dict_list | cookie のリスト   | list[dict]    |
+| save             | cookie を保存     | true or false |
+| load             | cookie を読み込む | true or false |
 
 - wait_css_selector のオプション
 
@@ -343,6 +347,13 @@ curl -X 'POST' \
 | max_retries     | リトライ回数                                                                                                                                   | 数値         |
 | wait_time       | リトライ時の待ち時間                                                                                                                           | 数値         |
 | check_exist_tag | 追加の指定したセレクタが存在するかの確認（※wait_css_selector.selector とは別）。存在があればアクションしない。存在しない場合はアクションする。 | CSS セレクタ |
+
+- prompt のオプション
+
+| オプション名 | 説明 | 設定する値 |
+| ------------ | ---- | ---------- |
+| add_prompt | パーサ作成時の補足として追加するプロンプト | 文字列      |
+
 
 [TOP](#概要)
 

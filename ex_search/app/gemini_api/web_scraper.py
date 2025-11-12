@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 from app.downloader import download_remotely, async_get
 from app.downloader import dl_with_nodriver_api as nodriver_api
-from .ask_gemini import ParserGenerator
+from .ask_gemini import ParserGenerator, ParserRequestPrompt
 from .model_convert import ModelConverter
 from domain.schemas.search import search
 from domain.models.ai import repository as m_ia_repo
@@ -48,7 +48,7 @@ async def get_html_with_nodriver_api(command: GetCommandWithNodriver):
                 False,
                 f"nodriver api error, type:{result.error.error_type}, message:{result.error.error_msg}",
             )
-        return True, result.result
+        return True, result
     except Exception as e:
         return False, f"nodriver api exception, type:{type(e).__name__}, message:{e}"
 
@@ -108,11 +108,17 @@ async def _parse_html(
     recreate: bool = False,
     exclude_script: bool = True,
     compress_whitespace: bool = False,
+    promptopts: search.PromptOptions | None = None,
 ):
     if exclude_script:
         html = exclude_script_tags(html)
     if compress_whitespace:
         html = compress_whitespace_in_html(html)
+    if promptopts and promptopts.add_prompt:
+        parserprompt = ParserRequestPrompt(add_prompt=promptopts.add_prompt)
+    else:
+        parserprompt = ParserRequestPrompt()
+
     sparser = ParserGenerator(
         html_str=html,
         label=label,
@@ -120,6 +126,7 @@ async def _parse_html(
         parserlog_repository=pg_repository,
         url=url,
         recreate=recreate,
+        prompt=parserprompt,
     )
     result = await sparser.execute()
     return result.parsed_result
@@ -135,6 +142,7 @@ async def parse_html_and_convert(
     recreate: bool = False,
     exclude_script: bool = True,
     compress_whitespace: bool = False,
+    prompt: search.PromptOptions | None = None,
 ) -> search.SearchResults | None:
     parsed_result = await _parse_html(
         html=html,
@@ -145,6 +153,7 @@ async def parse_html_and_convert(
         recreate=recreate,
         exclude_script=exclude_script,
         compress_whitespace=compress_whitespace,
+        promptopts=prompt,
     )
     if not parsed_result:
         return None

@@ -6,7 +6,7 @@ import asyncio
 import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from pydantic import BaseModel
 
 from common import read_config
 from domain.schemas.search import (
@@ -14,6 +14,7 @@ from domain.schemas.search import (
     SearchResponse,
     AskGeminiOptions,
     SofmapOptions,
+    DownloadRequest,
 )
 from domain.models.cache import (
     cache as c_cache,
@@ -42,7 +43,6 @@ from app.iosys import (
     model_convert as iosys_modelconvert,
 )
 from app.gemini_api import web_scraper as gemini_webscraper
-
 from app.activitylog.update import UpdateActivityLog
 from .enums import SuppoertedDomain, SupportedSiteName, ActivityName, URLDomainStatus
 from .repository import URLDomainCacheRepository
@@ -130,13 +130,20 @@ class SearchClient:
             return SearchResponse(error_msg=f"task is not created")
 
         tasklog_id = tasklog.id
-        ok, result = await self._download_html(converted_url=converted_url)
+        downloader = HTMLDownloader(
+            downloadrequest=DownloadRequest(
+                **searchrequest.model_dump(exclude={"search_keyword"})
+            ),
+            searchcache_repository=self.searchcache_repository,
+            converted_url=converted_url,
+        )
+        ok, result = await downloader.execute()
         if not ok:
             await upactlog.failed(
                 id=tasklog_id,
-                error_msg=result,
+                error_msg=result.error_msg,
             )
-            return SearchResponse(error_msg=result)
+            return SearchResponse(error_msg=result.error_msg)
         add_subinfo = {}
         if (
             isinstance(searchrequest.options, SofmapOptions)
@@ -152,7 +159,7 @@ class SearchClient:
         match sitename:
             case SupportedSiteName.SOFMAP.value:
                 parsed_result = await sofmap_scraper.parse_html(
-                    html=result.download_text, url=searchrequest.url
+                    html=result.searchcache.download_text, url=searchrequest.url
                 )
                 sresults = (
                     sofmap_modelconvert.ModelConverter.parseresults_to_searchresults(
@@ -162,7 +169,7 @@ class SearchClient:
                 response = SearchResponse(**sresults.model_dump())
             case SupportedSiteName.GEO.value:
                 parsed_result = await geo_scraper.parse_html(
-                    html=result.download_text, url=searchrequest.url
+                    html=result.searchcache.download_text, url=searchrequest.url
                 )
                 sresults = (
                     geo_modelconvert.ModelConverter.parseresults_to_searchresults(
@@ -172,7 +179,7 @@ class SearchClient:
                 response = SearchResponse(**sresults.model_dump())
             case SupportedSiteName.IOSYS.value:
                 parsed_result = await iosys_scraper.parse_html(
-                    html=result.download_text, url=searchrequest.url
+                    html=result.searchcache.download_text, url=searchrequest.url
                 )
                 sresults = (
                     iosys_modelconvert.ModelConverter.parseresults_to_searchresults(
@@ -192,7 +199,7 @@ class SearchClient:
                 )
                 try:
                     sresults = await gemini_webscraper.parse_html_and_convert(
-                        html=result.download_text,
+                        html=result.searchcache.download_text,
                         url=searchrequest.url,
                         label=label,
                         session=self.session,
@@ -201,6 +208,7 @@ class SearchClient:
                         recreate=geminiopts.recreate_parser,
                         exclude_script=geminiopts.exclude_script,
                         compress_whitespace=geminiopts.compress_whitespace,
+                        prompt=geminiopts.prompt,
                     )
                 except Exception as e:
                     await upactlog.failed(
@@ -227,25 +235,174 @@ class SearchClient:
                     error_msg=f"not supported domain : {parsed_url.netloc}"
                 )
 
-        if not result.id:
+        if not result.searchcache.id:
             cacheopts = read_config.get_cache_options()
             if cacheopts.expires:
                 cache_expires = datetime.now(timezone.utc) + timedelta(
                     seconds=cacheopts.expires
                 )
-                result.expires = cache_expires
-                await self._set_search_cache(
-                    searchcache=result,
+                result.searchcache.expires = cache_expires
+                await downloader._set_search_cache(
+                    searchcache=result.searchcache,
                 )
         await upactlog.completed(id=tasklog_id)
         return response
+
+
+class DownLoadResult(BaseModel):
+    searchcache: c_cache.SearchCache | None = None
+    error_msg: str | None = None
+
+
+class HTMLDownloader:
+    downloadrequest: DownloadRequest
+    target_url: str
+    converted_url: str
+    searchcache_repository: i_cacherepo.ISearchCacheRepository
+
+    def __init__(
+        self,
+        downloadrequest: DownloadRequest,
+        searchcache_repository: i_cacherepo.ISearchCacheRepository,
+        converted_url: str | None = None,
+    ):
+        self.downloadrequest = downloadrequest
+        self.searchcache_repository = searchcache_repository
+        self.converted_url = converted_url
+        if converted_url and converted_url != downloadrequest.url:
+            self.target_url = converted_url
+        else:
+            self.target_url = downloadrequest.url
+
+    async def execute(self):
+        dlreq: DownloadRequest = self.downloadrequest
+        target_url = self.target_url
+        converted_url = self.converted_url
+
+        parsed_url = urlparse(target_url)
+        if not dlreq.no_cache:
+            searchcache = await self._get_search_cache()
+            if searchcache and searchcache.download_text:
+                return True, DownLoadResult(searchcache=searchcache)
+
+        dl_waittimeopts = read_config.get_download_waittime_options()
+        domainrepo = await self._create_URLDomainCacheRepository()
+        ok, msg = await self._wait_downloadable(
+            domain=parsed_url.netloc,
+            repository=domainrepo,
+            timeout_util_downloadable=dl_waittimeopts.timeout_util_downloadable,
+        )
+        if not ok:
+            return False, DownLoadResult(error_msg=msg)
+        searchopts = read_config.get_search_options()
+        await domainrepo.save(
+            domain=parsed_url.netloc, status=URLDomainStatus.DOWNLOADING.value
+        )
+        sitename = dlreq.sitename.lower()
+        match sitename:
+            case SupportedSiteName.SOFMAP.value:
+                if sofmap_urlgenerate.is_direct_search(url=target_url):
+                    ok, result = await sofmap_scraper.get_html(
+                        sofmap_scraper.GetCommandWithHttpx(
+                            url=target_url,
+                            timeout=dl_waittimeopts.timeout_for_each_url,
+                            delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                            is_ucaa=not searchopts.safe_search,
+                        )
+                    )
+                    download_type = c_enums.DownloadType.HTTPX.value
+                else:
+                    ok, result = await sofmap_tasks.async_download_sofmap(
+                        url=target_url
+                    )
+                    download_type = c_enums.DownloadType.SELENIUM.value
+            case SupportedSiteName.GEO.value:
+                ok, result = await geo_tasks.async_download_geo(url=target_url)
+                download_type = c_enums.DownloadType.SELENIUM.value
+            case SupportedSiteName.IOSYS.value:
+                ok, result = await iosys_scraper.get_html(
+                    iosys_scraper.GetCommandWithHttpx(
+                        url=target_url,
+                        timeout=dl_waittimeopts.timeout_for_each_url,
+                        delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                    )
+                )
+                download_type = c_enums.DownloadType.HTTPX.value
+            case SupportedSiteName.GEMINI.value:
+                ok, result, download_type = await self._download_html_for_gemini(
+                    converted_url=converted_url,
+                    dl_waittimeopts=dl_waittimeopts,
+                )
+            case _:
+                await domainrepo.save(
+                    domain=parsed_url.netloc,
+                    status=URLDomainStatus.FAILED.value,
+                )
+                return False, DownLoadResult(
+                    error_msg=f"not supported domain : {parsed_url.netloc}"
+                )
+
+        if not ok:
+            await domainrepo.save(
+                domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
+            )
+            return False, DownLoadResult(error_msg=result)
+
+        await domainrepo.save(
+            domain=parsed_url.netloc, status=URLDomainStatus.COMPLETED.value
+        )
+        searchcache = c_cache.SearchCache(
+            domain=parsed_url.netloc,
+            url=target_url,
+            download_type=download_type,
+            download_text=result,
+        )
+        return ok, DownLoadResult(searchcache=searchcache)
+
+    async def _download_html_for_gemini(
+        self, converted_url: str, dl_waittimeopts: read_config.DownloadWaitTimeOptions
+    ):
+        if isinstance(self.downloadrequest.options, AskGeminiOptions):
+            geminiopts = self.downloadrequest.options
+        else:
+            geminiopts = AskGeminiOptions(**self.downloadrequest.options)
+        selenium_opt = read_config.get_selenium_options()
+        if geminiopts.selenium:
+            ok, result = await gemini_webscraper.get_html_with_selenium(
+                command=gemini_webscraper.GetCommandWithSelenium(
+                    url=converted_url,
+                    wait_css_selector=geminiopts.selenium.wait_css_selector,
+                    page_load_timeout=geminiopts.selenium.page_load_timeout,
+                    tag_wait_timeout=geminiopts.selenium.tag_wait_timeout,
+                    selenium_url=selenium_opt.remote_url,
+                    page_wait_time=geminiopts.selenium.page_wait_time,
+                )
+            )
+            return ok, result, c_enums.DownloadType.SELENIUM.value
+        elif geminiopts.nodriver:
+            ok, result = await gemini_webscraper.get_html_with_nodriver_api(
+                command=gemini_webscraper.GetCommandWithNodriver(
+                    url=converted_url,
+                    nodriver_options=geminiopts.nodriver,
+                )
+            )
+            return ok, result.result, c_enums.DownloadType.NODRIVER.value
+        else:
+            ok, result = await gemini_webscraper.get_html(
+                command=gemini_webscraper.GetCommandWithHttpx(
+                    url=converted_url,
+                    timeout=dl_waittimeopts.timeout_for_each_url,
+                    delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                )
+            )
+            return ok, result, c_enums.DownloadType.HTTPX.value
 
     async def _get_search_cache(self) -> c_cache.SearchCache | None:
         repo = self.searchcache_repository
         now = datetime.now(timezone.utc)
         results = await repo.get(
             command=c_cmd.SearchCacheGetCommand(
-                url=self.searchrequest.url, expires_start=now
+                url=self.downloadrequest.url, expires_start=now
             )
         )
         if not results:
@@ -317,124 +474,6 @@ class SearchClient:
                     f" wait_time_util_dl:{timeout_util_downloadable}"
                     f" diff_time:{now.total_seconds()}",
                 )
-
-    async def _download_html(self, converted_url: str | None = None):
-        searchrequest = self.searchrequest
-        if converted_url and converted_url != searchrequest.url:
-            target_url = converted_url
-        else:
-            target_url = searchrequest.url
-        parsed_url = urlparse(target_url)
-        searchcache = await self._get_search_cache()
-        if searchcache and searchcache.download_text:
-            return True, searchcache
-        else:
-            dl_waittimeopts = read_config.get_download_waittime_options()
-            domainrepo = await self._create_URLDomainCacheRepository()
-            ok, msg = await self._wait_downloadable(
-                domain=parsed_url.netloc,
-                repository=domainrepo,
-                timeout_util_downloadable=dl_waittimeopts.timeout_util_downloadable,
-            )
-            if not ok:
-                return False, msg
-            searchopts = read_config.get_search_options()
-            await domainrepo.save(
-                domain=parsed_url.netloc, status=URLDomainStatus.DOWNLOADING.value
-            )
-            match parsed_url.netloc:
-                case SuppoertedDomain.SOFMAP.value | SuppoertedDomain.A_SOFMAP.value:
-                    if sofmap_urlgenerate.is_direct_search(url=target_url):
-                        ok, result = await sofmap_scraper.get_html(
-                            sofmap_scraper.GetCommandWithHttpx(
-                                url=target_url,
-                                timeout=dl_waittimeopts.timeout_for_each_url,
-                                delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
-                                is_ucaa=not searchopts.safe_search,
-                            )
-                        )
-                        download_type = c_enums.DownloadType.HTTPX.value
-                    else:
-                        ok, result = await sofmap_tasks.async_download_sofmap(
-                            url=target_url
-                        )
-                        download_type = c_enums.DownloadType.SELENIUM.value
-                case SuppoertedDomain.GEO.value:
-                    ok, result = await geo_tasks.async_download_geo(url=target_url)
-                    download_type = c_enums.DownloadType.SELENIUM.value
-                case SuppoertedDomain.IOSYS.value:
-                    ok, result = await iosys_scraper.get_html(
-                        iosys_scraper.GetCommandWithHttpx(
-                            url=target_url,
-                            timeout=dl_waittimeopts.timeout_for_each_url,
-                            delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
-                        )
-                    )
-                    download_type = c_enums.DownloadType.HTTPX.value
-                case _:
-                    if searchrequest.sitename.lower() != SupportedSiteName.GEMINI.value:
-                        await domainrepo.save(
-                            domain=parsed_url.netloc,
-                            status=URLDomainStatus.FAILED.value,
-                        )
-                        return False, f"not supported domain : {parsed_url.netloc}"
-
-                    ok, result, download_type = await self._download_html_for_gemini(
-                        converted_url=converted_url, dl_waittimeopts=dl_waittimeopts
-                    )
-            if not ok:
-                await domainrepo.save(
-                    domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
-                )
-                return False, result
-            await domainrepo.save(
-                domain=parsed_url.netloc, status=URLDomainStatus.COMPLETED.value
-            )
-            searchcache = c_cache.SearchCache(
-                domain=parsed_url.netloc,
-                url=target_url,
-                download_type=download_type,
-                download_text=result,
-            )
-            return ok, searchcache
-
-    async def _download_html_for_gemini(
-        self, converted_url: str, dl_waittimeopts: read_config.DownloadWaitTimeOptions
-    ):
-        if isinstance(self.searchrequest.options, AskGeminiOptions):
-            geminiopts = self.searchrequest.options
-        else:
-            geminiopts = AskGeminiOptions(**self.searchrequest.options)
-        selenium_opt = read_config.get_selenium_options()
-        if geminiopts.selenium:
-            ok, result = await gemini_webscraper.get_html_with_selenium(
-                command=gemini_webscraper.GetCommandWithSelenium(
-                    url=converted_url,
-                    wait_css_selector=geminiopts.selenium.wait_css_selector,
-                    page_load_timeout=geminiopts.selenium.page_load_timeout,
-                    tag_wait_timeout=geminiopts.selenium.tag_wait_timeout,
-                    selenium_url=selenium_opt.remote_url,
-                    page_wait_time=geminiopts.selenium.page_wait_time,
-                )
-            )
-            return ok, result, c_enums.DownloadType.SELENIUM.value
-        elif geminiopts.nodriver:
-            ok, result = await gemini_webscraper.get_html_with_nodriver_api(
-                command=gemini_webscraper.GetCommandWithNodriver(
-                    url=converted_url,
-                    nodriver_options=geminiopts.nodriver,
-                )
-            )
-            return ok, result, c_enums.DownloadType.NODRIVER.value
-        else:
-            ok, result = await gemini_webscraper.get_html(
-                command=gemini_webscraper.GetCommandWithHttpx(
-                    url=converted_url,
-                    timeout=dl_waittimeopts.timeout_for_each_url,
-                    delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
-                )
-            )
-            return ok, result, c_enums.DownloadType.HTTPX.value
 
 
 class KeyWordToURL:

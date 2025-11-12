@@ -5,6 +5,8 @@ from .search import (
     GeminiWaitOptions,
     SofmapOptions,
     IosysOptions,
+    DownloadRequest,
+    DownLoadResponse,
 )
 from .info import InfoRequest, InfoResponse
 
@@ -17,4 +19,6 @@ __all__ = [
     "GeminiWaitOptions",
     "SofmapOptions",
     "IosysOptions",
+    "DownloadRequest",
+    "DownLoadResponse",
 ]

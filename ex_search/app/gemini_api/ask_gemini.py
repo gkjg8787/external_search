@@ -22,24 +22,29 @@ model_ids = {
 }
 CLASS_NAME_PATTERN = re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
 IMPORT_PATTERN = re.compile(r"(?:from\s+(\S+)\s+import\s+(\S+))|(?:import\s+(\S+))")
+CURRENT_PATH = pathlib.Path(__file__).resolve().parent
 
 
 class ParserRequestPrompt:
     first_prompt_fpath: str
+    add_prompt: str
 
     def __init__(
         self,
-        first_prompt_fpath: str = str(
-            pathlib.Path(__file__).resolve().parent / "create_parser_prompt.md"
-        ),
+        first_prompt_fpath: str = str(CURRENT_PATH / "create_parser_prompt.md"),
+        add_prompt: str = "",
     ):
         self.first_prompt_fpath = first_prompt_fpath
+        self.add_prompt = add_prompt
 
-    def get_first_prompt(self) -> str:
+    def get_prompt(self) -> str:
         p = pathlib.Path(self.first_prompt_fpath)
         if not p.exists():
             return ""
-        return p.read_text(encoding="utf-8")
+        text = p.read_text(encoding="utf-8")
+        if self.add_prompt:
+            text += "\n" + self.add_prompt
+        return text
 
 
 class ParserGenerator:
@@ -145,7 +150,7 @@ class ParserGenerator:
         return log
 
     async def _request_parser(self, client: genai.Client):
-        first_prompt = self.prompt.get_first_prompt()
+        first_prompt = self.prompt.get_prompt()
         if not first_prompt:
             return AskGeminiErrorInfo(error_type="NoPrompt", error="No first prompt")
 

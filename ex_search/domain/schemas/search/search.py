@@ -11,6 +11,8 @@ class ErrorDetail(BaseModel):
 class Cookie(BaseModel):
     cookie_dict_list: Optional[list[dict[str, Any]]] = None
     return_cookies: Optional[bool] = False
+    save: Optional[bool] = False
+    load: Optional[bool] = False
 
 
 class OnError(BaseModel):
@@ -40,6 +42,10 @@ class GeminiWaitOptions(BaseModel):
     page_wait_time: float = Field(default=0, ge=0, le=30)
 
 
+class PromptOptions(BaseModel):
+    add_prompt: str = ""
+
+
 class AskGeminiOptions(BaseModel, extra="ignore"):
     sitename: str = ""
     label: str = ""
@@ -48,6 +54,7 @@ class AskGeminiOptions(BaseModel, extra="ignore"):
     recreate_parser: bool = False
     exclude_script: bool = True
     compress_whitespace: bool = False
+    prompt: PromptOptions | None = None
 
 
 class IosysOptions(BaseModel):
@@ -76,6 +83,7 @@ class SearchRequest(BaseModel):
     options: SofmapOptions | IosysOptions | AskGeminiOptions | dict = Field(
         default_factory=dict
     )
+    no_cache: bool = Field(default=False)
 
 
 class SearchResult(BaseModel):
@@ -103,3 +111,17 @@ class SearchResults(BaseModel):
 
 class SearchResponse(SearchResults):
     pass
+
+
+class DownloadRequest(BaseModel):
+    url: str
+    sitename: str
+    options: SofmapOptions | IosysOptions | AskGeminiOptions | dict = Field(
+        default_factory=dict
+    )
+    no_cache: bool = Field(default=False)
+
+
+class DownLoadResponse(BaseModel):
+    value: str | None = Field(default=None)
+    error_msg: str = Field(default="")
