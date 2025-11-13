@@ -386,6 +386,8 @@ class HTMLDownloader:
                     nodriver_options=geminiopts.nodriver,
                 )
             )
+            if isinstance(result, str):
+                return ok, result, c_enums.DownloadType.NODRIVER.value
             return ok, result.result, c_enums.DownloadType.NODRIVER.value
         else:
             ok, result = await gemini_webscraper.get_html(
