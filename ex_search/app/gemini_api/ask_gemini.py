@@ -4,7 +4,7 @@ import inspect
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from google import genai
-from google.genai import types
+from google.genai import types, errors
 import structlog
 
 from .models import AskGeminiResult, AskGeminiErrorInfo, ResultItems
@@ -13,13 +13,15 @@ from domain.models.ai import repository as a_repo
 
 logger = structlog.get_logger(__name__)
 
-model_ids = {
-    "pro": "gemini-2.5-pro",
-    "flash": "gemini-2.5-flash",
-    "flash-lite": "gemini-2.5-flash-lite",
-    "live": "gemini-live-2.5-flash-preview",
-    "image": "gemini-2.5-flash-image-preview",
-}
+MODEL_ESCALATION_LIST = [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+]
+
+
 CLASS_NAME_PATTERN = re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
 IMPORT_PATTERN = re.compile(r"(?:from\s+(\S+)\s+import\s+(\S+))|(?:import\s+(\S+))")
 CURRENT_PATH = pathlib.Path(__file__).resolve().parent
@@ -158,17 +160,19 @@ class ParserGenerator:
             types.Part.from_text(text=self.html_str),
             first_prompt,
         ]
-        try:
-            response = await client.aio.models.generate_content(
-                model=model_ids["flash"],
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(code_execution=types.ToolCodeExecution)],
-                ),
-            )
-            return response.model_dump()
-        except Exception as e:
-            return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
+        for gmodel in MODEL_ESCALATION_LIST:
+            try:
+                response = await client.aio.models.generate_content(
+                    model=gmodel, contents=contents
+                )
+                return response.model_dump()
+            except errors.APIError as e:
+                if e.code == 429:
+                    logger.warning(f"Escalte from {gmodel} to the next model")
+                    continue
+                return AskGeminiErrorInfo(error_type=type(e).__name__, error=e.message)
+            except Exception as e:
+                return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
 
     async def _get_parser_class(self, result: dict) -> tuple[type | None, dict]:
         if not result.get("candidates"):
