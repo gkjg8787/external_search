@@ -27,6 +27,10 @@ IMPORT_PATTERN = re.compile(r"(?:from\s+(\S+)\s+import\s+(\S+))|(?:import\s+(\S+
 CURRENT_PATH = pathlib.Path(__file__).resolve().parent
 
 
+class NoModelsAvailableError(Exception):
+    pass
+
+
 class ParserRequestPrompt:
     first_prompt_fpath: str
     add_prompt: str
@@ -173,6 +177,10 @@ class ParserGenerator:
                 return AskGeminiErrorInfo(error_type=type(e).__name__, error=e.message)
             except Exception as e:
                 return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
+        return AskGeminiErrorInfo(
+            error_type=type(NoModelsAvailableError).__name__,
+            error="No models available or Escalation limit exceeded.",
+        )
 
     async def _get_parser_class(self, result: dict) -> tuple[type | None, dict]:
         if not result.get("candidates"):
