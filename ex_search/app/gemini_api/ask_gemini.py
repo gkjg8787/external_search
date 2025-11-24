@@ -178,7 +178,7 @@ class ParserGenerator:
             except Exception as e:
                 return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
         return AskGeminiErrorInfo(
-            error_type=type(NoModelsAvailableError).__name__,
+            error_type=NoModelsAvailableError.__name__,
             error="No models available or Escalation limit exceeded.",
         )
 
