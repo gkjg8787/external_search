@@ -42,3 +42,4 @@ DOWNLOAD_WAITTIME_OPTIONS = {
 SEARCH_OPTIONS = {
     "safe_search": True,
 }
+COOKIE_DIR_PATH = f"{BASE_DIR}/cookies/"

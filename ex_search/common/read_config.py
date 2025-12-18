@@ -132,3 +132,7 @@ def get_download_waittime_options():
 def get_search_options():
     lower_key_dict = to_lower_keys(settings.SEARCH_OPTIONS)
     return SearchOptions(**lower_key_dict)
+
+
+def get_cookie_dir_path():
+    return settings.COOKIE_DIR_PATH

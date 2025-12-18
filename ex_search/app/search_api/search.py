@@ -376,6 +376,7 @@ class HTMLDownloader:
                     tag_wait_timeout=geminiopts.selenium.tag_wait_timeout,
                     selenium_url=selenium_opt.remote_url,
                     page_wait_time=geminiopts.selenium.page_wait_time,
+                    cookie_options=geminiopts.selenium.cookie,
                 )
             )
             return ok, result, c_enums.DownloadType.SELENIUM.value
@@ -395,6 +396,7 @@ class HTMLDownloader:
                     url=converted_url,
                     timeout=dl_waittimeopts.timeout_for_each_url,
                     delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                    httpx_options=geminiopts.httpx,
                 )
             )
             return ok, result, c_enums.DownloadType.HTTPX.value

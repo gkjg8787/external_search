@@ -18,12 +18,14 @@ class GetCommandWithSelenium(BaseModel):
     selenium_url: str | None = None
     wait_css_selector: str = ""
     page_watit_time: int | None = None
+    cookie_options: search.Cookie | None = None
 
 
 class GetCommandWithHttpx(BaseModel):
     url: str
     timeout: float = 5
     delay_seconds: int = 1
+    httpx_options: search.HttpxOptions | None = None
 
 
 class GetCommandWithNodriver(GetCommandWithHttpx):
@@ -66,6 +68,13 @@ async def get_html_with_selenium(command: GetCommandWithSelenium):
         params["selenium_url"] = command.selenium_url
     if command.page_watit_time:
         params["page_wait_time"] = command.page_watit_time
+    if command.cookie_options:
+        if command.cookie_options.cookie_dict_list:
+            params["cookie_dict_list"] = command.cookie_options.cookie_dict_list
+        if command.cookie_options.save:
+            params["cookie_save"] = command.cookie_options.save
+        if command.cookie_options.load:
+            params["cookie_load"] = command.cookie_options.load
     try:
         html = download_remotely(**params)
     except Exception as e:
@@ -78,10 +87,18 @@ async def get_html_with_selenium(command: GetCommandWithSelenium):
 
 async def get_html(command: GetCommandWithHttpx):
     try:
+        cookie_param = {}
+        if command.httpx_options and command.httpx_options.cookie:
+            cookie_param["cookie_dict_list"] = (
+                command.httpx_options.cookie.cookie_dict_list
+            )
+            cookie_param["cookie_save"] = command.httpx_options.cookie.save
+            cookie_param["cookie_load"] = command.httpx_options.cookie.load
         result = await async_get(
             url=command.url,
             timeout=command.timeout,
             delay_seconds=command.delay_seconds,
+            **cookie_param,
         )
         return True, result
     except Exception as e:
