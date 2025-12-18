@@ -28,3 +28,12 @@ services:
     container_name: redis_broker
     ports:
       - "6379:6379"
+  nodriver_api:
+    build:
+        context: https://github.com/gkjg8787/nodriver_api.git
+    init: true
+    ports:
+      - "8090:8090"
+    shm_size: "2gb"
+    profiles:
+      - nodriver
