@@ -82,6 +82,10 @@ async def async_get(
     cookie_dict_list: list[dict] = [],
     cookie_save: bool = False,
     cookie_load: bool = False,
+    user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    os_name: str = "Windows",
+    os_version: str = "10.0.0",
+    browser_major_ver: str = "120",
 ):
     if cookie_dict_list is None:
         cookie_dict_list = []
@@ -95,6 +99,14 @@ async def async_get(
         domain=urlparse(url).netloc, cookie_dict_list=cookie_dict_list
     )
 
+    headers = {
+        "User-Agent": user_agent,
+        "Sec-CH-UA": f'"Not_A Brand";v="8", "Chromium";v="{browser_major_ver}", "Google Chrome";v="{browser_major_ver}"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": f'"{os_name}"',
+        "Sec-CH-UA-Platform-Version": f'"{os_version}"',
+    }
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
         if cookie_load:
             await cookie_manager.load_cookies(client, add_cookies=cookie_dict_list)
@@ -102,9 +114,11 @@ async def async_get(
             try:
                 if not cookie_load:
                     cookies = await _set_cookies(cookie_dict_list=cookie_dict_list)
-                    res = await client.get(url, timeout=timeout, cookies=cookies)
+                    res = await client.get(
+                        url, timeout=timeout, cookies=cookies, headers=headers
+                    )
                 else:
-                    res = await client.get(url, timeout=timeout)
+                    res = await client.get(url, timeout=timeout, headers=headers)
                 res.raise_for_status()
                 if cookie_save:
                     await cookie_manager.save_cookies(client)
