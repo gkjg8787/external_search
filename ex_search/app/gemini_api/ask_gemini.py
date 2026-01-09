@@ -14,6 +14,8 @@ from domain.models.ai import repository as a_repo
 logger = structlog.get_logger(__name__)
 
 MODEL_ESCALATION_LIST = [
+    "gemini-3-pro-preview",
+    "gemini-3-flash-preview",
     "gemini-2.5-pro",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
@@ -169,7 +171,7 @@ class ParserGenerator:
                 response = await client.aio.models.generate_content(
                     model=gmodel, contents=contents
                 )
-                return response.model_dump()
+                return response.model_dump(mode="json")
             except errors.APIError as e:
                 if e.code == 429:
                     logger.warning(f"Escalte from {gmodel} to the next model")

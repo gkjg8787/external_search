@@ -1,15 +1,13 @@
-from bs4 import BeautifulSoup
 import re
-import inspect
-import pathlib
 import asyncio
 import argparse
 from pprint import pprint
+from contextlib import asynccontextmanager
 
 from app.gemini_api.parserlog import UpdateParserLog
 from databases.sql.ai import repository as ai_repo
 from databases.sql import util as db_util
-from domain.models.ai import ailog as m_ailog, command as a_cmd
+from domain.models.ai import command as a_cmd
 
 
 CLASS_NAME_PATTERN = re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
@@ -48,11 +46,15 @@ async def _get_text_and_usage_metadata(result: dict) -> tuple[str, dict]:
 
 
 async def get_parser_log():
-    async for db in db_util.get_async_session():
-        cmd = a_cmd.ParserGenerationLogGetCommand(is_error=True)
-        airepo = ai_repo.ParserGenerationLogRepository(db)
-        ret = await airepo.get(cmd)
-        print(ret)
+    scoped_session = asynccontextmanager(db_util.get_async_session)
+    try:
+        async with scoped_session() as db:
+            cmd = a_cmd.ParserGenerationLogGetCommand(is_error=True)
+            airepo = ai_repo.ParserGenerationLogRepository(db)
+            ret = await airepo.get(cmd)
+            print(ret)
+    finally:
+        await db_util.async_engine.dispose()
 
 
 async def main():
@@ -84,24 +86,27 @@ async def main():
 
     label = argp.label
     id = argp.id
-    async for db in db_util.get_async_session():
-        plog = UpdateParserLog(db, ai_repo.ParserGenerationLogRepository(db))
-        log = await plog.get_log(label=label, id=id, is_error=is_error)
-        if not log:
-            print("log is None")
-            return
-        print(f"id:{log.id}, updated_at:{log.updated_at}, label:{log.label}")
-        if log.error_info:
-            print("error_info : ", log.error_info)
-        text, metadata = await _get_text_and_usage_metadata(log.response)
-        if view_dict["text"]:
-            print("=========================================")
-            print("text : \n", text)
-        if view_dict["meta"]:
-            print("=========================================")
-            print("usage_metadata : ")
-            pprint(metadata)
+    scoped_session = asynccontextmanager(db_util.get_async_session)
+    try:
+        async with scoped_session() as db:
+            plog = UpdateParserLog(db, ai_repo.ParserGenerationLogRepository(db))
+            log = await plog.get_log(label=label, id=id, is_error=is_error)
+            if not log:
+                print("log is None")
+                return
+            print(f"id:{log.id}, updated_at:{log.updated_at}, label:{log.label}")
+            if log.error_info:
+                print("error_info : ", log.error_info)
+            text, metadata = await _get_text_and_usage_metadata(log.response)
+            if view_dict["text"]:
+                print("=========================================")
+                print("text : \n", text)
+            if view_dict["meta"]:
+                print("=========================================")
+                print("usage_metadata : ")
+                pprint(metadata)
+    finally:
+        await db_util.async_engine.dispose()
 
 
 asyncio.run(main())
-# asyncio.run(get_parser_log())
