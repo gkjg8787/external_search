@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from .ailog import ParserGenerationLog
+from .ailog import ParserGenerationLog, DownloadConfigGenerationLog
 from .command import ParserGenerationLogGetCommand
 
 
@@ -12,4 +12,10 @@ class IParserGenerationLogRepository(ABC):
     async def get(
         self, command: ParserGenerationLogGetCommand
     ) -> list[ParserGenerationLog]:
+        pass
+
+
+class IDownloadConfigGenerationLogRepository(ABC):
+    @abstractmethod
+    async def save(self, log_entry: DownloadConfigGenerationLog):
         pass

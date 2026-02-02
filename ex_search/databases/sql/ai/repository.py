@@ -69,3 +69,18 @@ class ParserGenerationLogRepository(a_repo.IParserGenerationLogRepository):
         stmt = stmt.order_by(m_ailog.ParserGenerationLog.id.desc())
         res = await self.session.execute(stmt)
         return res.scalars().all()
+
+
+class DownloadConfigGenerationLogRepository(
+    a_repo.IDownloadConfigGenerationLogRepository
+):
+    session: AsyncSession
+
+    def __init__(self, ses: AsyncSession):
+        self.session = ses
+
+    async def save(self, log_entry: m_ailog.DownloadConfigGenerationLog):
+        self.session.add(log_entry)
+        await self.session.commit()
+        await self.session.refresh(log_entry)
+        return log_entry

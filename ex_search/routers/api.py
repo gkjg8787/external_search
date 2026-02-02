@@ -166,6 +166,7 @@ async def api_get_download_result(
 async def api_get_downloadconfig_generate(
     request: Request,
     downloadconfigreq: DownloadConfigGenerateRequest,
+    db: AsyncSession = Depends(get_async_session),
 ):
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(
@@ -186,6 +187,7 @@ async def api_get_downloadconfig_generate(
         url=downloadconfigreq.url,
         search_word=downloadconfigreq.search_keyword,
         search_pattern_config=search_pattern_config,
+        db=db,
     )
     if isinstance(result, AskGeminiErrorInfo):
         log.error(
