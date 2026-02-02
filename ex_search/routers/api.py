@@ -18,9 +18,16 @@ from domain.schemas.search import (
     InfoRequest,
     DownloadRequest,
     DownLoadResponse,
+    DownloadConfigGenerateRequest,
+    DownloadConfigGenerateResponse,
 )
 from app.search_api.search import SearchClient, HTMLDownloader
 from app.search_api.info import SearchInfo
+from app.downloadconfig.config_generator import (
+    get_download_config_pattern,
+    SearchPatternConfig,
+)
+from app.gemini_api.models import AskGeminiErrorInfo
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -149,3 +156,46 @@ async def api_get_download_result(
         return DownLoadResponse(value=result.searchcache.download_text)
     else:
         return DownLoadResponse(error_msg=result.error_msg)
+
+
+@router.post(
+    "/downloadconfig/generate/",
+    response_model=DownloadConfigGenerateResponse,
+    description="渡されたURLと検索キーワードからダウンロード設定を生成します。",
+)
+async def api_get_downloadconfig_generate(
+    request: Request,
+    downloadconfigreq: DownloadConfigGenerateRequest,
+):
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        router_path=request.url.path,
+        request_id=str(uuid.uuid4()),
+    )
+    log = structlog.get_logger(__name__)
+    log.info("API DownloadConfig Generate called", downloadconfigreq=downloadconfigreq)
+    search_pattern_config = SearchPatternConfig(
+        timeout=downloadconfigreq.timeout,
+        optimize=downloadconfigreq.optimize,
+    )
+    if downloadconfigreq.init_nodriver_page_wait_time is not None:
+        search_pattern_config.default_config.nodriver.page_wait_time = (
+            downloadconfigreq.init_nodriver_page_wait_time
+        )
+    result = await get_download_config_pattern(
+        url=downloadconfigreq.url,
+        search_word=downloadconfigreq.search_keyword,
+        search_pattern_config=search_pattern_config,
+    )
+    if isinstance(result, AskGeminiErrorInfo):
+        log.error(
+            "DownloadConfig generation failed",
+            error_msg=result.error_msg,
+        )
+        raise HTTPException(status_code=404, detail=result.error_msg)
+    return DownloadConfigGenerateResponse(
+        download_config=result.download_config.model_dump(
+            mode="json", exclude_unset=True
+        ),
+        download_preset=result.download_preset,
+    )

@@ -1,0 +1,28 @@
+商品の検索結果のHTMLについて検索結果が含まれているか、検索結果が表示されていることを示す'css selector'を教えて。
+
+# 目的
+- HTMLを読み込み、{search_keyword}の検索結果において商品が1つ以上存在しているか判定
+- 検索結果が表示されている場合はどのタグが出ていれば表示されていると言えるのかcss selectorで出力する
+
+
+# input
+- 検索ワード:{search_keyword} で検索した結果のサイトのHTML
+
+# output
+- json形式
+```
+{{
+  "search_results_displayed": "displayed",
+  "search_results_selector":".example_class",
+  "item_selector": ".example_class",
+  "error_msg": "error values"
+}}
+```
+
+- "search_results_displayed" : 検索結果が表示されているか, "displayed" なら表示、"zero"なら検索はできているが商品結果なし、"none"なら検索結果のタグがない, "error" はエラーで表示がされない
+- "search_results_selector" : このcss selector があれば検索結果が0個だとしても表示されていると言えるセレクタ
+- "item_selector" : このcss selectorがあれば検索結果が1以上表示されていると言えるセレクタ
+- "search_results_displayed"="error" の場合の内容
+
+# 留意
+- HTMLが必ずしも検索結果が出ているとは限らない。検索結果0個、1個以上、javascriptの描写待ち、ボット対策画面、検索とは無関係のHTMLの可能性あり。

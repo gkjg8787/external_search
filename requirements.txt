@@ -9,3 +9,4 @@ aiosqlite
 structlog
 redis
 google-genai
+lxml

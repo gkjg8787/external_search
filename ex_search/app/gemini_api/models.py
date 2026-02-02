@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -26,3 +27,18 @@ class ResultItems(BaseModel):
 class AskGeminiResult(BaseModel):
     parsed_result: ResultItems | None = None
     error_info: AskGeminiErrorInfo | None = None
+
+
+class HTMLConfigSearchResult(BaseModel):
+    search_results_displayed: Literal["displayed", "zero", "none", "error"] = Field(
+        description="CSS selector to identify the section displaying search results"
+    )
+    search_results_selector: str = Field(
+        description="CSS selector to identify individual search result items"
+    )
+    item_selector: str = Field(
+        description="CSS selector to identify individual item within search results"
+    )
+    error_msg: str = Field(
+        default="", description="Error message if any issues occur during the search"
+    )

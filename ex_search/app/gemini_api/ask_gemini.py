@@ -7,7 +7,12 @@ from google import genai
 from google.genai import types, errors
 import structlog
 
-from .models import AskGeminiResult, AskGeminiErrorInfo, ResultItems
+from .models import (
+    AskGeminiResult,
+    AskGeminiErrorInfo,
+    ResultItems,
+    HTMLConfigSearchResult,
+)
 from .parserlog import UpdateParserLog
 from domain.models.ai import repository as a_repo
 
@@ -205,3 +210,69 @@ class ParserGenerator:
             if MyClass is not None and inspect.isclass(MyClass):
                 return MyClass, exec_scope
         return None, {}
+
+
+class HTMLSelectorConfigGenerator:
+    html_str: str
+    prompt: ParserRequestPrompt
+    search_word: str
+
+    def __init__(
+        self,
+        html_str: str,
+        search_word: str,
+        prompt: ParserRequestPrompt = ParserRequestPrompt(
+            first_prompt_fpath=str(
+                CURRENT_PATH / "checking_for_search_result_prompt.txt"
+            )
+        ),
+    ):
+        self.html_str = html_str
+        self.prompt = prompt
+        self.search_word = search_word
+
+    async def _get_generate_config_result(
+        self, client, contents
+    ) -> AskGeminiErrorInfo | HTMLConfigSearchResult:
+        for gmodel in MODEL_ESCALATION_LIST:
+            try:
+                response = await client.aio.models.generate_content(
+                    model=gmodel,
+                    contents=contents,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_json_schema": HTMLConfigSearchResult.model_json_schema(),
+                    },
+                )
+                return HTMLConfigSearchResult.model_validate_json(response.text)
+
+            except errors.APIError as e:
+                if e.code == 429:
+                    logger.warning(f"Escalte from {gmodel} to the next model")
+                    continue
+                return AskGeminiErrorInfo(error_type=type(e).__name__, error=e.message)
+            except Exception as e:
+                return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
+        return AskGeminiErrorInfo(
+            error_type=NoModelsAvailableError.__name__,
+            error="No models available or Escalation limit exceeded.",
+        )
+
+    async def execute(self):
+        client = genai.Client()
+        first_prompt = self.prompt.get_prompt()
+        if not first_prompt:
+            return AskGeminiErrorInfo(error_type="NoPrompt", error="No first prompt")
+
+        contents = [
+            types.Part.from_text(text=self.html_str),
+            first_prompt.format(search_keyword=self.search_word),
+        ]
+        result = await self._get_generate_config_result(
+            client=client, contents=contents
+        )
+        if isinstance(result, HTMLConfigSearchResult) and result.error_msg:
+            return AskGeminiErrorInfo(
+                error_type=RuntimeError.__name__, error=result.error_msg
+            )
+        return result

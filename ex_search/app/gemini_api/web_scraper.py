@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
+import re
 
 from app.downloader import download_remotely, async_get
 from app.downloader import dl_with_nodriver_api as nodriver_api
@@ -106,10 +107,16 @@ async def get_html(command: GetCommandWithHttpx):
 
 
 def exclude_script_tags(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
-    for script in soup(["script", "style"]):
+    soup = BeautifulSoup(html, "lxml")
+    for meta in soup.select("head > meta"):
+        if meta.get("name") != "description" and meta.get("charset") is None:
+            meta.decompose()
+    for script in soup(["script", "style", "link"]):
         script.decompose()
-    return str(soup)
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        comment.decompose()
+    result_html = str(soup)
+    return re.sub(r"^[ \t]*\n", "", result_html, flags=re.MULTILINE)
 
 
 def compress_whitespace_in_html(html: str) -> str:

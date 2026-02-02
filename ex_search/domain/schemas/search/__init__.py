@@ -9,6 +9,10 @@ from .search import (
     DownLoadResponse,
 )
 from .info import InfoRequest, InfoResponse
+from .downloadconfig import (
+    DownloadConfigGenerateRequest,
+    DownloadConfigGenerateResponse,
+)
 
 __all__ = [
     "SearchRequest",
@@ -21,4 +25,6 @@ __all__ = [
     "IosysOptions",
     "DownloadRequest",
     "DownLoadResponse",
+    "DownloadConfigGenerateRequest",
+    "DownloadConfigGenerateResponse",
 ]

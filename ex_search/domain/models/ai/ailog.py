@@ -18,3 +18,18 @@ class ParserGenerationLog(SQLBase, table=True):
     meta: dict = Field(
         default_factory=dict, sa_column=Column(MutableDict.as_mutable(JSON))
     )
+
+
+class DownloadConfigGenerationLog(SQLBase, table=True):
+    label: str = Field(index=True)
+    target_url: str
+    search_keyword: str
+    response: dict = Field(
+        default_factory=dict, sa_column=Column(MutableDict.as_mutable(JSON))
+    )
+    error_info: dict | None = Field(
+        default=None, sa_column=Column(MutableDict.as_mutable(JSON(none_as_null=True)))
+    )
+    meta: dict = Field(
+        default_factory=dict, sa_column=Column(MutableDict.as_mutable(JSON))
+    )

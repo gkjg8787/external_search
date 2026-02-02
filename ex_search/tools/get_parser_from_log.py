@@ -31,7 +31,8 @@ def set_argparse():
         required=False,
     )
     parser.add_argument("--error", type=str, choices=["true", "false", "none"])
-    parser.add_argument("-f", "--file", type=str, default="output.html")
+    parser.add_argument("-i", "--input_file", type=str)
+    parser.add_argument("-o", "--output_file", type=str)
     parser.add_argument(
         "-v",
         "--view",
@@ -112,8 +113,8 @@ async def main():
             is_error = False
 
     html = None
-    if argp.file:
-        html_path = pathlib.Path(argp.file)
+    if argp.input_file:
+        html_path = pathlib.Path(argp.input_file)
         if html_path.exists():
             html = html_path.read_text()
     label = argp.label
@@ -152,7 +153,11 @@ async def main():
                         globals()[k] = v
                         print("add : ", k)
                     parser = class_type(html)
-                    print(parser.execute())
+                    result = parser.execute()
+                    print(result)
+                    if argp.output_file:
+                        output_path = pathlib.Path(argp.output_file)
+                        output_path.write_text(result)
     finally:
         await db_util.async_engine.dispose()
 
