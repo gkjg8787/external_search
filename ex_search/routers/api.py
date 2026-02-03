@@ -192,12 +192,13 @@ async def api_get_downloadconfig_generate(
     if isinstance(result, AskGeminiErrorInfo):
         log.error(
             "DownloadConfig generation failed",
-            error_msg=result.error_msg,
+            error_msg=result.error,
+            error_type=result.error_type,
         )
-        raise HTTPException(status_code=404, detail=result.error_msg)
+        raise HTTPException(status_code=404, detail=result.error)
     return DownloadConfigGenerateResponse(
         download_config=result.download_config.model_dump(
-            mode="json", exclude_unset=True
+            mode="json", exclude_unset=True, exclude_none=True
         ),
         download_preset=result.download_preset,
     )

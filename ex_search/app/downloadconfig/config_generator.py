@@ -6,7 +6,10 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.gemini_api.models import HTMLConfigSearchResult, AskGeminiErrorInfo
-from app.gemini_api.ask_gemini import HTMLSelectorConfigGenerator
+from app.gemini_api.ask_gemini import (
+    HTMLSelectorConfigGenerator,
+    NoModelsAvailableError,
+)
 from app.gemini_api import web_scraper
 from domain.schemas.search import search as search_schema
 from domain.models.ai import ailog as m_ailog
@@ -97,32 +100,40 @@ async def get_download_config_pattern(
     search_pattern_config: SearchPatternConfig,
     db: AsyncSession,
 ) -> DownloadConfigResult | AskGeminiErrorInfo:
-    download_presets = [
-        {
-            "name": "basic_nodriver",
+    workflow_config = {
+        "basic_nodriver": {
             "nodriver": {
                 "cookie": {"save": True, "load": False},
             },
+            "ok": "end_success",
+            "error": "cookie_nodriver",
+            "need_optimize": "basic_httpx",
         },
-        {
-            "name": "cookie_nodriver",
+        "cookie_nodriver": {
             "nodriver": {
                 "cookie": {"save": True, "load": True},
             },
+            "ok": "end_success",
+            "error": "end_return",
+            "need_optimize": "cookie_httpx",
         },
-        {
-            "name": "basic_httpx",
+        "basic_httpx": {
             "httpx": {
                 "cookie": {"save": True, "load": False},
             },
+            "ok": "end_success",
+            "error": "cookie_httpx",
+            "need_optimize": "end_success",
         },
-        {
-            "name": "cookie_httpx",
+        "cookie_httpx": {
             "httpx": {
                 "cookie": {"save": True, "load": True},
             },
+            "ok": "end_success",
+            "error": "end_return",
+            "need_optimize": "end_success",
         },
-    ]
+    }
 
     label_domain = await _create_label_and_domain_from_url(url)
     label = label_domain["label"]
@@ -144,7 +155,11 @@ async def get_download_config_pattern(
         await repo.save(log_entry)
 
     optimized_result = None
-    for i, preset in enumerate(download_presets):
+    current_preset = "basic_nodriver"
+    preset_route = []
+    while current_preset not in ["end_success", "end_return"]:
+        preset = workflow_config[current_preset]
+        preset_route.append(current_preset)
         nodriver_options = None
         httpx_options = None
         if (
@@ -179,9 +194,10 @@ async def get_download_config_pattern(
                 )
             )
             if not ok or isinstance(result, str):
-                err = AskGeminiErrorInfo(error_msg=result)
+                err = AskGeminiErrorInfo(error=result, error_type="DownloadError")
                 await _save_log({}, err.model_dump(), {})
-                return err
+                current_preset = preset["error"]
+                continue
             html_str = result.result
         elif preset.get("httpx") is not None:
             logger.debug("trying download config with httpx preset", preset=preset)
@@ -198,13 +214,16 @@ async def get_download_config_pattern(
                     timeout=timeout,
                 )
             )
-            if not ok:
-                err = AskGeminiErrorInfo(error_msg=html_str)
+            if not ok or not html_str:
+                err = AskGeminiErrorInfo(error=html_str, error_type="DownloadError")
                 await _save_log({}, err.model_dump(), {})
-                return err
+                current_preset = preset["error"]
+                continue
         else:
             logger.error("invalid preset configuration")
-            continue
+            return AskGeminiErrorInfo(
+                error="invalid preset configuration", error_type="ConfigError"
+            )
 
         logger.info(
             "download successful. generating html selector config",
@@ -250,16 +269,25 @@ async def get_download_config_pattern(
                     },
                 )
                 return optimized_result
+            current_preset = preset["need_optimize"]
             logger.debug("optimized html selector config generated", preset=preset)
             await asyncio.sleep(CYCLE_WAIT_TIME)
             continue
         if isinstance(result, AskGeminiErrorInfo):
+            if result.error_type == NoModelsAvailableError.__name__:
+                logger.error(
+                    "no models available for html selector config generation",
+                    preset=preset,
+                )
+                await _save_log(last_execute_result, result.model_dump(), {})
+                return result
             logger.info(
                 "failed to generate html selector config",
                 preset=preset,
                 error_type=result.error_type,
                 error_msg=result.error,
             )
+            current_preset = preset["error"]
             await asyncio.sleep(CYCLE_WAIT_TIME)
             continue
         elif isinstance(result, HTMLConfigSearchResult):
@@ -268,6 +296,7 @@ async def get_download_config_pattern(
                 preset=preset,
                 last_execute_result=last_execute_result,
             )
+            current_preset = preset["error"]
             await asyncio.sleep(CYCLE_WAIT_TIME)
             continue
         else:
@@ -279,17 +308,24 @@ async def get_download_config_pattern(
                 error_msg="unexpected error during html selector config generation"
             )
             await _save_log(last_execute_result, err.model_dump(), {})
+            if optimized_result:
+                logger.warning(
+                    "unexpected error during html selector config generation, but continuing as optimized_result exists"
+                )
+                current_preset = preset["need_optimize"]
+                continue
             return err
     if optimized_result is None:
         logger.warning("failed to generate any download config preset worked")
         err = AskGeminiErrorInfo(
-            error_msg="all download config presets failed to generate valid html selector config"
+            error="all download config presets failed to generate valid html selector config",
+            error_type="NoValidConfig",
         )
         await _save_log(last_execute_result, err.model_dump(), {})
         return err
     logger.info(
         "all download config presets tried",
-        presets_tried=len(download_presets),
+        preset_route=preset_route,
         optimized_result=optimized_result.model_dump(),
     )
     await _save_log(

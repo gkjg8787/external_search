@@ -35,8 +35,8 @@ CACHE_OPTIONS = {
     "backend": "redis",
 }
 DOWNLOAD_WAITTIME_OPTIONS = {
-    "timeout_for_each_url": 60,
-    "timeout_util_downloadable": 300,
+    "timeout_for_each_url": 40,
+    "timeout_util_downloadable": 150,
     "min_wait_time_of_dl": 1,
 }
 SEARCH_OPTIONS = {
