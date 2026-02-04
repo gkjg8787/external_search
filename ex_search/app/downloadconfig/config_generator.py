@@ -1,3 +1,4 @@
+import json
 from urllib.parse import urlparse
 import asyncio
 
@@ -7,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.gemini_api.models import HTMLConfigSearchResult, AskGeminiErrorInfo
 from app.gemini_api.ask_gemini import (
-    HTMLSelectorConfigGenerator,
     NoModelsAvailableError,
+    HTMLSelectorConfigGeneratorForJSON,
 )
 from app.gemini_api import web_scraper
 from domain.schemas.search import search as search_schema
@@ -86,11 +87,10 @@ async def _generate_download_config_result(
         download_preset=preset,
     )
     if result.search_results_selector:
-        downloadconfigresult.download_config.prompt = (
-            search_schema.PromptOptions(
-                add_prompt=f"#補足\n検索結果はCSSセレクタの{result.search_results_selector}で取得できます。"
-            ),
+        downloadconfigresult.download_config.prompt = search_schema.PromptOptions(
+            add_prompt=f"#補足\n検索結果はCSSセレクタの{result.search_results_selector}で取得できます。"
         )
+
     return downloadconfigresult
 
 
@@ -230,7 +230,8 @@ async def get_download_config_pattern(
             url=url,
             search_word=search_word,
         )
-        generator = HTMLSelectorConfigGenerator(
+
+        generator = HTMLSelectorConfigGeneratorForJSON(
             html_str=html_str,
             search_word=search_word,
         )

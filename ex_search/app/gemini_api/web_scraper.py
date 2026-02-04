@@ -1,11 +1,11 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from bs4 import BeautifulSoup, Comment
 import re
 
 from app.downloader import download_remotely, async_get
 from app.downloader import dl_with_nodriver_api as nodriver_api
-from .ask_gemini import ParserGenerator, ParserRequestPrompt
+from .ask_gemini import ParserRequestPrompt, ParserGeneratorForJSON
 from .model_convert import ModelConverter
 from domain.schemas.search import search
 from domain.models.ai import repository as m_ia_repo
@@ -134,16 +134,16 @@ async def _parse_html(
     compress_whitespace: bool = False,
     promptopts: search.PromptOptions | None = None,
 ):
-    if exclude_script:
-        html = exclude_script_tags(html)
-    if compress_whitespace:
-        html = compress_whitespace_in_html(html)
     if promptopts and promptopts.add_prompt:
         parserprompt = ParserRequestPrompt(add_prompt=promptopts.add_prompt)
     else:
         parserprompt = ParserRequestPrompt()
+    if exclude_script:
+        html = exclude_script_tags(html)
+    if compress_whitespace:
+        html = compress_whitespace_in_html(html)
 
-    sparser = ParserGenerator(
+    sparser = ParserGeneratorForJSON(
         html_str=html,
         label=label,
         session=session,

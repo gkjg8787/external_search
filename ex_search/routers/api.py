@@ -23,10 +23,7 @@ from domain.schemas.search import (
 )
 from app.search_api.search import SearchClient, HTMLDownloader
 from app.search_api.info import SearchInfo
-from app.downloadconfig.config_generator import (
-    get_download_config_pattern,
-    SearchPatternConfig,
-)
+from app.downloadconfig import config_generator
 from app.gemini_api.models import AskGeminiErrorInfo
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -175,15 +172,17 @@ async def api_get_downloadconfig_generate(
     )
     log = structlog.get_logger(__name__)
     log.info("API DownloadConfig Generate called", downloadconfigreq=downloadconfigreq)
-    search_pattern_config = SearchPatternConfig(
+    search_pattern_config = config_generator.SearchPatternConfig(
         timeout=downloadconfigreq.timeout,
         optimize=downloadconfigreq.optimize,
     )
     if downloadconfigreq.init_nodriver_page_wait_time is not None:
-        search_pattern_config.default_config.nodriver.page_wait_time = (
-            downloadconfigreq.init_nodriver_page_wait_time
+        search_pattern_config.default_config = config_generator.DefaultDownloadConfig(
+            nodriver=config_generator.DefaultNodriverConfig(
+                page_wait_time=downloadconfigreq.init_nodriver_page_wait_time
+            )
         )
-    result = await get_download_config_pattern(
+    result = await config_generator.get_download_config_pattern(
         url=downloadconfigreq.url,
         search_word=downloadconfigreq.search_keyword,
         search_pattern_config=search_pattern_config,
