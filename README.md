@@ -307,9 +307,10 @@ curl -X 'POST' \
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------- |
 | sitename            | 返却するアイテム情報に含むサイト名                                                                                    | 文字列        |
 | label               | 作成したパーサのラベル。別の URL、または同じ URL で作成済みの同じパーサを使いたい場合は一致したものにする必要がある。 | 文字列        |
-| recreate_parser     | label で指定した作成済みパーサがある場合、再作成するかどうか。                                                        | true or false |
 | selenium            | ダウンロードする方法を selenium に指定する場合のオプション。                                                          | dict          |
 | nodriver            | ダウンロードする方法を nodriver_api に指定する場合のオプション                                                        | dict          |
+| httpx | ダウンロードする方法が httpx の場合のオプション                                                                                 | dict          |
+| recreate_parser     | label で指定した作成済みパーサがある場合、再作成するかどうか。                                                        | true or false |
 | exclude_script      | ダウンロードした HTML から script タグと style タグを削除する。gemini へ送る際のトークン削減になる。                  | true or false |
 | compress_whitespace | ダウンロードした HTML の空白を圧縮する。                                                                              | true or false |
 | prompt              | パーサ作成時のプロンプトのオプション                                                                                      | dict          |
@@ -318,6 +319,7 @@ curl -X 'POST' \
 
 | オプション名      | 説明                                                 | 設定する値 |
 | ----------------- | ---------------------------------------------------- | ---------- |
+| cookie            | cookie の設定                                        | dict       |
 | wait_css_selector | 指定したタグ(css セレクタ)が描写されるまで待つ       | 文字列     |
 | page_load_timeout | ページの読み込みのタイムアウト秒                     | 数値       |
 | tag_wait_timeout  | wait_css_selector で指定したタグのタイムアウト秒     | 数値       |
