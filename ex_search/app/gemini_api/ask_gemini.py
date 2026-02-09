@@ -515,6 +515,9 @@ def _element_to_minimal_dict(element, text_limit: int | None = 10):
     if element.get("src"):
         res["s"] = element.get("src")
 
+    if element.name == "img" and element.get("alt"):
+        res["a"] = element.get("alt")  # a: alt属性
+
     children = []
     for child in element.children:
         if child.name:
