@@ -25,7 +25,7 @@ async def get_from_nodriver_api(
     api_url = f"{nodriver_config.base_url}/download"
     data = {
         "url": url,
-    } | nodriver_options.model_dump(mode="json", exclude_none=True)
+    } | nodriver_options.model_dump(mode="json", exclude_unset=True)
     async with httpx.AsyncClient(follow_redirects=True) as client:
         for attempt in range(max_retries + 1):
             try:
