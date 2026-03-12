@@ -2,6 +2,7 @@ import asyncio
 from urllib.parse import urlparse
 from pathlib import Path
 import json
+import copy
 
 import structlog
 import httpx
@@ -85,7 +86,7 @@ async def async_get(
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     os_name: str = "Windows",
     os_version: str = "10.0.0",
-    browser_major_ver: str = "120",
+    browser_major_ver: str = "145",
 ):
     if cookie_dict_list is None:
         cookie_dict_list = []
@@ -98,27 +99,31 @@ async def async_get(
     cookie_dict_list = await add_missing_cookies(
         domain=urlparse(url).netloc, cookie_dict_list=cookie_dict_list
     )
-
-    headers = {
-        "User-Agent": user_agent,
-        "Sec-CH-UA": f'"Not_A Brand";v="8", "Chromium";v="{browser_major_ver}", "Google Chrome";v="{browser_major_ver}"',
-        "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": f'"{os_name}"',
-        "Sec-CH-UA-Platform-Version": f'"{os_version}"',
+    default_params = {
+        "timeout": timeout,
     }
+
+    if user_agent and browser_major_ver and os_name and os_version:
+        headers = {
+            "User-Agent": user_agent,
+            "Sec-CH-UA": f'"Not_A Brand";v="8", "Chromium";v="{browser_major_ver}", "Google Chrome";v="{browser_major_ver}"',
+            "Sec-CH-UA-Mobile": "?0",
+            "Sec-CH-UA-Platform": f'"{os_name}"',
+            "Sec-CH-UA-Platform-Version": f'"{os_version}"',
+        }
+        default_params["headers"] = headers
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         if cookie_load:
             await cookie_manager.load_cookies(client, add_cookies=cookie_dict_list)
         for attempt in range(max_retries + 1):
             try:
+                get_input = copy.deepcopy(default_params)
                 if not cookie_load:
                     cookies = await _set_cookies(cookie_dict_list=cookie_dict_list)
-                    res = await client.get(
-                        url, timeout=timeout, cookies=cookies, headers=headers
-                    )
-                else:
-                    res = await client.get(url, timeout=timeout, headers=headers)
+                    get_input["cookies"] = cookies
+
+                res = await client.get(url, **get_input)
                 res.raise_for_status()
                 if cookie_save:
                     await cookie_manager.save_cookies(client)

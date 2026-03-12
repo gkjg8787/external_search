@@ -136,3 +136,7 @@ def get_search_options():
 
 def get_cookie_dir_path():
     return settings.COOKIE_DIR_PATH
+
+
+def get_model_escalation_list():
+    return settings.MODEL_ESCALATION_LIST

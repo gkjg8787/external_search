@@ -18,18 +18,11 @@ from .models import (
 )
 from .parserlog import UpdateParserLog
 from domain.models.ai import repository as a_repo
+from common.read_config import get_model_escalation_list
 
 logger = structlog.get_logger(__name__)
 
-MODEL_ESCALATION_LIST = [
-    "gemini-3-pro-preview",
-    "gemini-3-flash-preview",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-]
+MODEL_ESCALATION_LIST = get_model_escalation_list()
 
 
 CLASS_NAME_PATTERN = re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")

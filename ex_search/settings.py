@@ -43,3 +43,10 @@ SEARCH_OPTIONS = {
     "safe_search": True,
 }
 COOKIE_DIR_PATH = f"{BASE_DIR}/cookies/"
+MODEL_ESCALATION_LIST = [
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro",  # 〜2026/6/17
+    "gemini-3.1-flash-lite-preview",
+    "gemini-2.5-flash",  # 〜2026/6/17
+    "gemini-2.5-flash-lite",  # 〜2026/7/22
+]

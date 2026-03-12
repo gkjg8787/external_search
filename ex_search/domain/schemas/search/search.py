@@ -57,6 +57,7 @@ class SeleniumWaitOptions(BaseModel):
 
 class HttpxOptions(BaseModel):
     cookie: Optional[Cookie] = None
+    no_useragent: bool = False
 
 
 class PromptOptions(BaseModel):

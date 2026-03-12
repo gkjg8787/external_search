@@ -106,8 +106,14 @@ async def get_download_config_pattern(
                 "cookie": {"save": True, "load": False},
             },
             "ok": "end_success",
-            "error": "cookie_nodriver",
+            "error": "no_useragent_nodriver",
             "need_optimize": "basic_httpx",
+        },
+        "no_useragent_nodriver": {
+            "nodriver": {"cookie": {"save": True, "load": False}, "no_useragent": True},
+            "ok": "end_success",
+            "error": "cookie_nodriver",
+            "need_optimize": "no_useragent_httpx",
         },
         "cookie_nodriver": {
             "nodriver": {
@@ -120,6 +126,15 @@ async def get_download_config_pattern(
         "basic_httpx": {
             "httpx": {
                 "cookie": {"save": True, "load": False},
+            },
+            "ok": "end_success",
+            "error": "no_useragent_httpx",
+            "need_optimize": "end_success",
+        },
+        "no_useragent_httpx": {
+            "httpx": {
+                "cookie": {"save": True, "load": False},
+                "no_useragent": True,
             },
             "ok": "end_success",
             "error": "cookie_httpx",
@@ -186,6 +201,8 @@ async def get_download_config_pattern(
                 ),
                 page_wait_time=page_wait_time,
             )
+            if preset.get("nodriver").get("no_useragent"):
+                nodriver_options.useragent = None
             ok, result = await web_scraper.get_html_with_nodriver_api(
                 command=web_scraper.GetCommandWithNodriver(
                     url=url,
@@ -207,6 +224,8 @@ async def get_download_config_pattern(
                     load=preset["httpx"]["cookie"]["load"],
                 )
             )
+            if preset.get("httpx").get("no_useragent"):
+                httpx_options.no_useragent = True
             ok, html_str = await web_scraper.get_html(
                 command=web_scraper.GetCommandWithHttpx(
                     url=url,

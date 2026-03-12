@@ -88,19 +88,23 @@ async def get_html_with_selenium(command: GetCommandWithSelenium):
 
 async def get_html(command: GetCommandWithHttpx):
     try:
-        cookie_param = {}
+        async_get_params = {
+            "url": command.url,
+            "timeout": command.timeout,
+            "delay_seconds": command.delay_seconds,
+        }
         if command.httpx_options and command.httpx_options.cookie:
-            cookie_param["cookie_dict_list"] = (
+            async_get_params["cookie_dict_list"] = (
                 command.httpx_options.cookie.cookie_dict_list
             )
-            cookie_param["cookie_save"] = command.httpx_options.cookie.save
-            cookie_param["cookie_load"] = command.httpx_options.cookie.load
-        result = await async_get(
-            url=command.url,
-            timeout=command.timeout,
-            delay_seconds=command.delay_seconds,
-            **cookie_param,
-        )
+            async_get_params["cookie_save"] = command.httpx_options.cookie.save
+            async_get_params["cookie_load"] = command.httpx_options.cookie.load
+        if command.httpx_options and command.httpx_options.no_useragent:
+            async_get_params["user_agent"] = ""
+            async_get_params["os_name"] = ""
+            async_get_params["os_version"] = ""
+            async_get_params["browser_major_ver"] = ""
+        result = await async_get(**async_get_params)
         return True, result
     except Exception as e:
         return False, f"download error, type:{type(e).__name__}, message:{e}"
