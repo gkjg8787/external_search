@@ -68,6 +68,8 @@ async def _generate_download_config_result(
 
     selector = result.item_selector or result.search_results_selector or ""
     if preset.get("nodriver") and nodriver_options:
+        if selector and "img" not in selector:
+            selector += " img"
         nodriver_options.wait_css_selector = search_schema.WaitCSSSelector(
             selector=selector,
             timeout=10,
