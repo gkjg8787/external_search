@@ -64,6 +64,12 @@ class PromptOptions(BaseModel):
     add_prompt: str = ""
 
 
+class RedirectOptions(BaseModel):
+    stop_on_redirect: bool = False
+    ignore_trailing_slash: bool = True
+    ignore_add_query: bool = True
+
+
 class AskGeminiOptions(BaseModel, extra="ignore"):
     sitename: str = ""
     label: str = ""
@@ -74,6 +80,7 @@ class AskGeminiOptions(BaseModel, extra="ignore"):
     exclude_script: bool = True
     compress_whitespace: bool = False
     prompt: PromptOptions | None = None
+    redirect_options: RedirectOptions | None = None
 
 
 class IosysOptions(BaseModel):
