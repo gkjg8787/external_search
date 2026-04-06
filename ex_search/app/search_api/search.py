@@ -252,6 +252,7 @@ class SearchClient:
 class DownLoadResult(BaseModel):
     searchcache: c_cache.SearchCache | None = None
     error_msg: str | None = None
+    redirect_url: str | None = None
 
 
 class HTMLDownloader:
@@ -298,7 +299,9 @@ class HTMLDownloader:
         await domainrepo.save(
             domain=parsed_url.netloc, status=URLDomainStatus.DOWNLOADING.value
         )
+        redirect_url = None
         sitename = dlreq.sitename.lower()
+
         match sitename:
             case SupportedSiteName.SOFMAP.value:
                 if sofmap_urlgenerate.is_direct_search(url=target_url):
@@ -329,10 +332,14 @@ class HTMLDownloader:
                 )
                 download_type = c_enums.DownloadType.HTTPX.value
             case SupportedSiteName.GEMINI.value:
-                ok, result, download_type = await self._download_html_for_gemini(
-                    converted_url=converted_url,
-                    dl_waittimeopts=dl_waittimeopts,
+                ok, result, download_type, *option_data = (
+                    await self._download_html_for_gemini(
+                        converted_url=converted_url,
+                        dl_waittimeopts=dl_waittimeopts,
+                    )
                 )
+                if option_data and option_data[0]:
+                    redirect_url = option_data[0]
             case _:
                 await domainrepo.save(
                     domain=parsed_url.netloc,
@@ -346,7 +353,10 @@ class HTMLDownloader:
             await domainrepo.save(
                 domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
             )
-            return False, DownLoadResult(error_msg=result)
+            dlresult = DownLoadResult(error_msg=result)
+            if redirect_url:
+                dlresult.redirect_url = redirect_url
+            return False, dlresult
 
         await domainrepo.save(
             domain=parsed_url.netloc, status=URLDomainStatus.COMPLETED.value
@@ -357,7 +367,10 @@ class HTMLDownloader:
             download_type=download_type,
             download_text=result,
         )
-        return ok, DownLoadResult(searchcache=searchcache)
+        dlresult = DownLoadResult(searchcache=searchcache)
+        if redirect_url:
+            dlresult.redirect_url = redirect_url
+        return ok, dlresult
 
     async def _download_html_for_gemini(
         self, converted_url: str, dl_waittimeopts: read_config.DownloadWaitTimeOptions
@@ -381,17 +394,19 @@ class HTMLDownloader:
             )
             return ok, result, c_enums.DownloadType.SELENIUM.value
         elif geminiopts.nodriver:
-            ok, result = await gemini_webscraper.get_html_with_nodriver_api(
-                command=gemini_webscraper.GetCommandWithNodriver(
-                    url=converted_url,
-                    nodriver_options=geminiopts.nodriver,
+            ok, result, redirect_url = (
+                await gemini_webscraper.get_html_with_nodriver_api(
+                    command=gemini_webscraper.GetCommandWithNodriver(
+                        url=converted_url,
+                        nodriver_options=geminiopts.nodriver,
+                    )
                 )
             )
             if isinstance(result, str):
-                return ok, result, c_enums.DownloadType.NODRIVER.value
-            return ok, result.result, c_enums.DownloadType.NODRIVER.value
+                return ok, result, c_enums.DownloadType.NODRIVER.value, redirect_url
+            return ok, result.result, c_enums.DownloadType.NODRIVER.value, redirect_url
         else:
-            ok, result = await gemini_webscraper.get_html(
+            ok, result, redirect_url = await gemini_webscraper.get_html(
                 command=gemini_webscraper.GetCommandWithHttpx(
                     url=converted_url,
                     timeout=dl_waittimeopts.timeout_for_each_url,
@@ -399,7 +414,7 @@ class HTMLDownloader:
                     httpx_options=geminiopts.httpx,
                 )
             )
-            return ok, result, c_enums.DownloadType.HTTPX.value
+            return ok, result, c_enums.DownloadType.HTTPX.value, redirect_url
 
     async def _get_search_cache(self) -> c_cache.SearchCache | None:
         repo = self.searchcache_repository

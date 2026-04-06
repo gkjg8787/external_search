@@ -12,6 +12,7 @@ class DownloadResponse(BaseModel):
     result: str = ""
     cookies: list[dict[str, Any]] = []
     error: schema.ErrorDetail = schema.ErrorDetail()
+    redirect_url: str | None = None
 
 
 async def get_from_nodriver_api(

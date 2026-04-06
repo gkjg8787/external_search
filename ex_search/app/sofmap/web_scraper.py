@@ -73,7 +73,7 @@ async def get_html(command: GetCommandWithHttpx):
             delay_seconds=command.delay_seconds,
             cookie_dict_list=cookie_dict_list,
         )
-        return True, result
+        return True, result.text
     except Exception as e:
         return False, str(e)
 

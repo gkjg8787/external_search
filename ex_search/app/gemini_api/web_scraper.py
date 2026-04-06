@@ -47,13 +47,17 @@ async def get_html_with_nodriver_api(command: GetCommandWithNodriver):
             delay_seconds=command.delay_seconds,
         )
         if result.error.error_msg:
-            return (
-                False,
-                f"nodriver api error, type:{result.error.error_type}, message:{result.error.error_msg}",
-            )
-        return True, result
+            msg = f"nodriver api error, type:{result.error.error_type}, message:{result.error.error_msg}"
+            if result.redirect_url:
+                msg += f", redirect_url:{result.redirect_url}"
+            return False, msg, result.redirect_url
+        return True, result, result.redirect_url
     except Exception as e:
-        return False, f"nodriver api exception, type:{type(e).__name__}, message:{e}"
+        return (
+            False,
+            f"nodriver api exception, type:{type(e).__name__}, message:{e}",
+            None,
+        )
 
 
 async def get_html_with_selenium(command: GetCommandWithSelenium):
@@ -104,10 +108,13 @@ async def get_html(command: GetCommandWithHttpx):
             async_get_params["os_name"] = ""
             async_get_params["os_version"] = ""
             async_get_params["browser_major_ver"] = ""
-        result = await async_get(**async_get_params)
-        return True, result
+        response = await async_get(**async_get_params)
+        redirect_url = None
+        if response.url and response.url != command.url:
+            redirect_url = str(response.url)
+        return True, response.text, redirect_url
     except Exception as e:
-        return False, f"download error, type:{type(e).__name__}, message:{e}"
+        return False, f"download error, type:{type(e).__name__}, message:{e}", None
 
 
 def exclude_script_tags(html: str) -> str:

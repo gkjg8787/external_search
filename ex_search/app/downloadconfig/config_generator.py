@@ -205,13 +205,19 @@ async def get_download_config_pattern(
             )
             if preset.get("nodriver").get("no_useragent"):
                 nodriver_options.useragent = None
-            ok, result = await web_scraper.get_html_with_nodriver_api(
+            ok, result, redirect_url = await web_scraper.get_html_with_nodriver_api(
                 command=web_scraper.GetCommandWithNodriver(
                     url=url,
                     nodriver_options=nodriver_options,
                     timeout=timeout,
                 )
             )
+            if redirect_url:
+                logger.warning(
+                    "redirect detected in nodriver api response",
+                    url=url,
+                    redirect_url=redirect_url,
+                )
             if not ok or isinstance(result, str):
                 err = AskGeminiErrorInfo(error=result, error_type="DownloadError")
                 await _save_log({}, err.model_dump(), {})
@@ -228,7 +234,7 @@ async def get_download_config_pattern(
             )
             if preset.get("httpx").get("no_useragent"):
                 httpx_options.no_useragent = True
-            ok, html_str = await web_scraper.get_html(
+            ok, html_str, redirect_url = await web_scraper.get_html(
                 command=web_scraper.GetCommandWithHttpx(
                     url=url,
                     httpx_options=httpx_options,

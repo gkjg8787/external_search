@@ -150,9 +150,13 @@ async def api_get_download_result(
         )
         raise HTTPException(status_code=404, detail=str(e))
     if ok:
-        return DownLoadResponse(value=result.searchcache.download_text)
+        return DownLoadResponse(
+            value=result.searchcache.download_text, redirect_url=result.redirect_url
+        )
     else:
-        return DownLoadResponse(error_msg=result.error_msg)
+        return DownLoadResponse(
+            error_msg=result.error_msg, redirect_url=result.redirect_url
+        )
 
 
 @router.post(

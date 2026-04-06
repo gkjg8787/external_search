@@ -144,3 +144,4 @@ class DownloadRequest(BaseModel):
 class DownLoadResponse(BaseModel):
     value: str | None = Field(default=None)
     error_msg: str = Field(default="")
+    redirect_url: str | None = None

@@ -17,7 +17,7 @@ async def get_html(command: GetCommandWithHttpx):
             timeout=command.timeout,
             delay_seconds=command.delay_seconds,
         )
-        return True, result
+        return True, result.text
     except Exception as e:
         return False, str(e)
 

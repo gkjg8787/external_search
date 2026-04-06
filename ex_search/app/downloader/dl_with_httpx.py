@@ -127,7 +127,7 @@ async def async_get(
                 res.raise_for_status()
                 if cookie_save:
                     await cookie_manager.save_cookies(client)
-                return res.text
+                return res
             except (httpx.RequestError, httpx.HTTPStatusError) as e:
                 if attempt < max_retries:
                     await asyncio.sleep(delay_seconds)
