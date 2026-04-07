@@ -7,6 +7,8 @@ from .search import (
     IosysOptions,
     DownloadRequest,
     DownLoadResponse,
+    AskGeminiOptions,
+    RedirectOptions,
 )
 from .info import InfoRequest, InfoResponse
 from .downloadconfig import (
@@ -20,6 +22,7 @@ __all__ = [
     "InfoRequest",
     "InfoResponse",
     "AskGeminiOptions",
+    "RedirectOptions",
     "SeleniumWaitOptions",
     "SofmapOptions",
     "IosysOptions",

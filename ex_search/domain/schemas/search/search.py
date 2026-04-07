@@ -133,6 +133,7 @@ class SearchResult(BaseModel):
 class SearchResults(BaseModel):
     results: list[SearchResult] = Field(default_factory=list)
     error_msg: str = Field(default="")
+    redirect_url: str | None = None
 
 
 class SearchResponse(SearchResults):

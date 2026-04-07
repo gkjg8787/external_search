@@ -15,6 +15,7 @@ from domain.schemas.search import (
     AskGeminiOptions,
     SofmapOptions,
     DownloadRequest,
+    RedirectOptions,
 )
 from domain.models.cache import (
     cache as c_cache,
@@ -143,7 +144,23 @@ class SearchClient:
                 id=tasklog_id,
                 error_msg=result.error_msg,
             )
-            return SearchResponse(error_msg=result.error_msg)
+            return SearchResponse(
+                error_msg=result.error_msg, redirect_url=result.redirect_url
+            )
+
+        redirect_url = result.redirect_url
+        if redirect_url:
+            if await self._stop_on_redirect(
+                searchreq=searchrequest, redirect_url=redirect_url
+            ):
+                await upactlog.failed(
+                    id=tasklog_id,
+                    error_msg=f"stopped on redirect. redirect_url:{redirect_url}",
+                )
+                return SearchResponse(
+                    error_msg=f"stopped on redirect. redirect_url:{redirect_url}",
+                    redirect_url=redirect_url,
+                )
         add_subinfo = {}
         if (
             isinstance(searchrequest.options, SofmapOptions)
@@ -167,6 +184,7 @@ class SearchClient:
                     )
                 )
                 response = SearchResponse(**sresults.model_dump())
+                response.redirect_url = redirect_url
             case SupportedSiteName.GEO.value:
                 parsed_result = await geo_scraper.parse_html(
                     html=result.searchcache.download_text, url=searchrequest.url
@@ -177,6 +195,7 @@ class SearchClient:
                     )
                 )
                 response = SearchResponse(**sresults.model_dump())
+                response.redirect_url = redirect_url
             case SupportedSiteName.IOSYS.value:
                 parsed_result = await iosys_scraper.parse_html(
                     html=result.searchcache.download_text, url=searchrequest.url
@@ -187,6 +206,7 @@ class SearchClient:
                     )
                 )
                 response = SearchResponse(**sresults.model_dump())
+                response.redirect_url = redirect_url
             case SupportedSiteName.GEMINI.value:
                 if isinstance(searchrequest.options, AskGeminiOptions):
                     geminiopts = searchrequest.options
@@ -215,24 +235,32 @@ class SearchClient:
                         id=tasklog_id,
                         error_msg=f"parse error. {type(e).__name__}, {e}",
                     )
-                    return SearchResponse(
-                        error_msg=f"parse error. {type(e).__name__}, {e}"
+                    response = SearchResponse(
+                        error_msg=f"parse error. {type(e).__name__}, {e}",
+                        redirect_url=redirect_url,
                     )
+                    return response
+
                 if not sresults:
                     await upactlog.failed(
                         id=tasklog_id,
                         error_msg=f"parse error. sresults is None",
                     )
-                    return SearchResponse(error_msg=f"parse error. sresults is None")
+                    return SearchResponse(
+                        error_msg="parse error. sresults is None",
+                        redirect_url=redirect_url,
+                    )
 
                 response = SearchResponse(**sresults.model_dump())
+                response.redirect_url = redirect_url
             case _:
                 await upactlog.failed(
                     id=tasklog_id,
                     error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
                 )
                 return SearchResponse(
-                    error_msg=f"not supported domain : {parsed_url.netloc}"
+                    error_msg=f"not supported domain : {parsed_url.netloc}",
+                    redirect_url=redirect_url,
                 )
 
         if not result.searchcache.id:
@@ -247,6 +275,57 @@ class SearchClient:
                 )
         await upactlog.completed(id=tasklog_id)
         return response
+
+    async def _is_redirect(self, searchreq: SearchRequest, redirect_url: str):
+        if not redirect_url or not searchreq.url or searchreq.url == redirect_url:
+            return False
+
+        if (
+            searchreq.options
+            and isinstance(searchreq.options, AskGeminiOptions)
+            and searchreq.options.redirect_options
+        ):
+            redirect_options = searchreq.options.redirect_options
+        else:
+            redirect_options = RedirectOptions()
+        req_p = urlparse(searchreq.url)
+        red_p = urlparse(redirect_url)
+
+        is_redirect = False
+
+        req_path = req_p.path
+        red_path = red_p.path
+
+        # Path comparison
+        path_match = req_path == red_path
+        if not path_match and redirect_options.ignore_trailing_slash:
+            path_match = req_path.rstrip("/") == red_path.rstrip("/")
+
+        if path_match:
+            # Query comparison if paths match
+            if not redirect_options.ignore_add_query and req_p.query != red_p.query:
+                is_redirect = True
+        else:
+            is_redirect = True
+        return is_redirect
+
+    async def _stop_on_redirect(self, searchreq: SearchRequest, redirect_url: str):
+        if not redirect_url or not searchreq.url or searchreq.url == redirect_url:
+            return False
+
+        if (
+            searchreq.options
+            and isinstance(searchreq.options, AskGeminiOptions)
+            and searchreq.options.redirect_options
+        ):
+            redirect_options = searchreq.options.redirect_options
+        else:
+            redirect_options = RedirectOptions()
+
+        if not redirect_options.stop_on_redirect:
+            return False
+
+        return await self._is_redirect(searchreq=searchreq, redirect_url=redirect_url)
 
 
 class DownLoadResult(BaseModel):
