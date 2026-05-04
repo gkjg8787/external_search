@@ -11,6 +11,7 @@ from app.gemini_api.ask_gemini import (
     NoModelsAvailableError,
     HTMLSelectorConfigGeneratorForJSON,
 )
+from app.downloadconfig.html_detection import HTMLDetection, HTMLDetectionResult
 from app.gemini_api import web_scraper
 from domain.schemas.search import search as search_schema
 from domain.models.ai import ailog as m_ailog
@@ -38,7 +39,7 @@ class SearchPatternConfig(BaseModel):
     default_config: DefaultDownloadConfig | None = Field(
         default=None, description="Default Download configuration"
     )
-    strategy_order: list = Field(default=["rule", "ai"])
+    strategy_order: list[str] = Field(default=["rule", "ai"])
 
 
 class DownloadConfigResult(BaseModel):
@@ -56,7 +57,7 @@ async def _create_label_and_domain_from_url(url: str) -> dict:
 
 async def _generate_download_config_result(
     url: str,
-    result: HTMLConfigSearchResult,
+    result: HTMLConfigSearchResult | HTMLDetectionResult,
     preset: dict,
     nodriver_options: search_schema.NodriverOptions | None,
     httpx_options: search_schema.HttpxOptions | None,
@@ -78,8 +79,17 @@ async def _generate_download_config_result(
             ),
         )
 
+    if isinstance(result, HTMLDetectionResult):
+        htmlconfigsearchresult = HTMLConfigSearchResult(
+            search_results_selector=result.search_results_selector,
+            item_selector=result.item_selector,
+            search_results_displayed=result.search_results_displayed,
+        )
+    else:
+        htmlconfigsearchresult = result
+
     downloadconfigresult = DownloadConfigResult(
-        htmlconfigsearchresult=result,
+        htmlconfigsearchresult=htmlconfigsearchresult,
         download_config=search_schema.AskGeminiOptions(
             sitename=domain,
             label=label,
@@ -256,19 +266,37 @@ async def get_download_config_pattern(
             "download successful. generating html selector config",
             url=url,
             search_word=search_word,
+            strategy_order=search_pattern_config.strategy_order,
         )
 
-        generator = HTMLSelectorConfigGeneratorForJSON(
-            html_str=html_str,
-            search_word=search_word,
-        )
-        result = await generator.execute()
+        strategy_order = search_pattern_config.strategy_order
+        result = None
+        if strategy_order and strategy_order[0] == "rule":
+            detector = HTMLDetection(html_str=html_str, searchword=search_word)
+            result = await detector.execute()
+        elif strategy_order and strategy_order[0] == "ai":
+            generator = HTMLSelectorConfigGeneratorForJSON(
+                html_str=html_str,
+                search_word=search_word,
+            )
+            result = await generator.execute()
+            if (
+                isinstance(result, AskGeminiErrorInfo)
+                and result.error_type == NoModelsAvailableError.__name__
+                and "rule" in strategy_order
+            ):
+                logger.warning(
+                    "no models available for ai strategy, falling back to rule-based strategy"
+                )
+                detector = HTMLDetection(html_str=html_str, searchword=search_word)
+                result = await detector.execute()
+
         if hasattr(result, "model_dump"):
             last_execute_result = result.model_dump()
         else:
             last_execute_result = {}
         if (
-            isinstance(result, HTMLConfigSearchResult)
+            isinstance(result, (HTMLConfigSearchResult, HTMLDetectionResult))
             and result.search_results_displayed == "displayed"
             and result.search_results_selector
         ):
@@ -318,7 +346,7 @@ async def get_download_config_pattern(
             current_preset = preset["error"]
             await asyncio.sleep(CYCLE_WAIT_TIME)
             continue
-        elif isinstance(result, HTMLConfigSearchResult):
+        elif isinstance(result, (HTMLConfigSearchResult, HTMLDetectionResult)):
             logger.info(
                 "generated html selector config but no search results found",
                 preset=preset,

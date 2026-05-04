@@ -186,6 +186,8 @@ async def api_get_downloadconfig_generate(
                 page_wait_time=downloadconfigreq.init_nodriver_page_wait_time
             )
         )
+    if downloadconfigreq.strategy_order is not None:
+        search_pattern_config.strategy_order = downloadconfigreq.strategy_order
     result = await config_generator.get_download_config_pattern(
         url=downloadconfigreq.url,
         search_word=downloadconfigreq.search_keyword,

@@ -350,14 +350,14 @@ class HTMLDetection(BaseModel):
         }
 
         candidate_res = hd.detect(
-            self.html_str, target_type=hd.TargetType.SEARCH_RESULT
+            self.html_str, target_type=hd.TargetType.SEARCH_RESULT_SELECTOR
         )
         for score, selector in candidate_res:
             if score <= 0:
                 return HTMLDetectionResult(
                     **score_detail, search_results_displayed="none"
                 )
-            ok, item_selector = self.find_item_selector(self.html_str, selector)
+            ok, item_selector = await self.find_item_selector(self.html_str, selector)
             if ok:
                 score_detail["item_selector"] = item_selector
                 score_detail["search_results_selector"] = selector
