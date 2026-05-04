@@ -16,7 +16,6 @@ from domain.schemas.search import search as search_schema
 from domain.models.ai import ailog as m_ailog
 from databases.sql.ai import repository as ai_repo
 
-
 logger = structlog.get_logger(__name__)
 CYCLE_WAIT_TIME = 1.5
 
@@ -39,6 +38,7 @@ class SearchPatternConfig(BaseModel):
     default_config: DefaultDownloadConfig | None = Field(
         default=None, description="Default Download configuration"
     )
+    strategy_order: list = Field(default=["rule", "ai"])
 
 
 class DownloadConfigResult(BaseModel):
@@ -171,6 +171,20 @@ async def get_download_config_pattern(
         repo = ai_repo.DownloadConfigGenerationLogRepository(db)
         await repo.save(log_entry)
 
+    if (
+        search_pattern_config.default_config
+        and search_pattern_config.default_config.nodriver
+        and search_pattern_config.default_config.nodriver.page_wait_time
+    ):
+        page_wait_time = search_pattern_config.default_config.nodriver.page_wait_time
+    else:
+        page_wait_time = 15
+
+    if search_pattern_config.timeout:
+        timeout = search_pattern_config.timeout
+    else:
+        timeout = 30
+
     optimized_result = None
     current_preset = "basic_nodriver"
     preset_route = []
@@ -179,21 +193,7 @@ async def get_download_config_pattern(
         preset_route.append(current_preset)
         nodriver_options = None
         httpx_options = None
-        if (
-            search_pattern_config.default_config
-            and search_pattern_config.default_config.nodriver
-            and search_pattern_config.default_config.nodriver.page_wait_time
-        ):
-            page_wait_time = (
-                search_pattern_config.default_config.nodriver.page_wait_time
-            )
-        else:
-            page_wait_time = 15
 
-        if search_pattern_config.timeout:
-            timeout = search_pattern_config.timeout
-        else:
-            timeout = 30
         if preset.get("nodriver") is not None:
             logger.debug("trying download config with nodriver preset", preset=preset)
             nodriver_options = search_schema.NodriverOptions(

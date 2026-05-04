@@ -10,3 +10,4 @@ structlog
 redis
 google-genai
 lxml
+https://github.com/gkjg8787/html_detector_lib/releases/download/v0.2.0/html_detector-0.2.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
