@@ -2,7 +2,7 @@
 
 ## 概要
 
-- 検索した結果を返す API
+- 検索した結果を返す API。個別サイト毎の機能は廃止予定。
 
 ## 目次
 
@@ -314,8 +314,9 @@ curl -X 'POST' \
 | exclude_script      | ダウンロードした HTML から script タグと style タグを削除する。gemini へ送る際のトークン削減になる。                  | true or false |
 | compress_whitespace | ダウンロードした HTML の空白を圧縮する。                                                                              | true or false |
 | prompt              | パーサ作成時のプロンプトのオプション                                                                                      | dict          |
+| redirect_options | アクセスしたURLがリダイレクトした際のオプション | dict |
 
-- selenium のオプション
+- selenium のオプション(廃止予定)
 
 | オプション名      | 説明                                                 | 設定する値 |
 | ----------------- | ---------------------------------------------------- | ---------- |
@@ -364,6 +365,14 @@ curl -X 'POST' \
 | オプション名 | 説明 | 設定する値 |
 | ------------ | ---- | ---------- |
 | add_prompt | パーサ作成時の補足として追加するプロンプト | 文字列      |
+
+- redirect_options のオプション
+
+| オプション名 | 説明 | 設定する値 |
+| ------------ | ---- | ---------- |
+| stop_on_redirect| リダイレクトを検出した際に停止するかどうか | true or false |
+| ignore_trailing_slash|リダイレクトしたURLが末尾スラッシュの差の場合、無視するかどうか（リダイレクト扱いしない）| true or false |
+| ignore_add_query|リダイレクトしたURLがクエリの差の場合、無視するかどうか（リダイレクト扱いしない）| true or false |
 
 
 [TOP](#概要)
@@ -440,6 +449,7 @@ curl -X 'POST' \
 |timeout | 自動生成のタイムアウト | 秒数 or null | null |
 | optimize | ダウンロード設定の最適化。falseだと最初に成功した設定を返す。trueの場合はnodriver → httpx の順に試行する。 | true or false | false |
 | init_nodriver_page_wait_time | nodriverを使用する場合のタイムアウト時間 | 秒数 or null | null |
+| strategy_order | 検索結果のHTMLの判定に使うロジックの優先順位。rule優先指定の場合、AIは使用しない。記述方法はlist型。優先する順に記述。 | ["ai", "rule"] | ["rule", "ai"] |
 
 
 
