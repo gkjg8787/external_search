@@ -325,6 +325,17 @@ class HTMLDetection(BaseModel):
         most_common_selector = most_common_data[0][0]
         return True, most_common_selector
 
+    async def get_search_result_selectors(self, html_content):
+        soup = BeautifulSoup(html_content, "lxml")
+
+        for elem in soup.select("#header"):
+            elem.decompose()
+
+        candidate_res = hd.detect(
+            str(soup), target_type=hd.TargetType.SEARCH_RESULT_SELECTOR
+        )
+        return candidate_res
+
     async def execute(self):
         total_score = 0
         keyword_score, keywords = await self.scoring_by_keywords()
@@ -349,9 +360,7 @@ class HTMLDetection(BaseModel):
             "search_result_structure_details": sresult_details,
         }
 
-        candidate_res = hd.detect(
-            self.html_str, target_type=hd.TargetType.SEARCH_RESULT_SELECTOR
-        )
+        candidate_res = await self.get_search_result_selectors(self.html_str)
         for score, selector in candidate_res:
             if score <= 0:
                 return HTMLDetectionResult(
