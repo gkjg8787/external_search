@@ -266,7 +266,8 @@ class HTMLDetection(BaseModel):
             return False, None
 
         soup = BeautifulSoup(html_content, "lxml")
-        parent = soup.select_one(parent_selector)
+        escaped_selector = parent_selector.replace(":", r"\:")
+        parent = soup.select_one(escaped_selector)
 
         if not parent:
             return False, None
