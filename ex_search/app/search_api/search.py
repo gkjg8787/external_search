@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import uuid
 import asyncio
 import time
+import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -173,95 +174,121 @@ class SearchClient:
             add_subinfo["remove_duplicates"] = False
 
         sitename = searchrequest.sitename.lower()
-        match sitename:
-            case SupportedSiteName.SOFMAP.value:
-                parsed_result = await sofmap_scraper.parse_html(
-                    html=result.searchcache.download_text, url=searchrequest.url
-                )
-                sresults = (
-                    sofmap_modelconvert.ModelConverter.parseresults_to_searchresults(
-                        results=parsed_result, remove_duplicates=remove_duplicates
-                    )
-                )
-                response = SearchResponse(**sresults.model_dump())
-                response.redirect_url = redirect_url
-            case SupportedSiteName.GEO.value:
-                parsed_result = await geo_scraper.parse_html(
-                    html=result.searchcache.download_text, url=searchrequest.url
-                )
-                sresults = (
-                    geo_modelconvert.ModelConverter.parseresults_to_searchresults(
-                        results=parsed_result
-                    )
-                )
-                response = SearchResponse(**sresults.model_dump())
-                response.redirect_url = redirect_url
-            case SupportedSiteName.IOSYS.value:
-                parsed_result = await iosys_scraper.parse_html(
-                    html=result.searchcache.download_text, url=searchrequest.url
-                )
-                sresults = (
-                    iosys_modelconvert.ModelConverter.parseresults_to_searchresults(
-                        results=parsed_result
-                    )
-                )
-                response = SearchResponse(**sresults.model_dump())
-                response.redirect_url = redirect_url
-            case SupportedSiteName.GEMINI.value:
-                if isinstance(searchrequest.options, AskGeminiOptions):
-                    geminiopts = searchrequest.options
-                else:
-                    geminiopts = AskGeminiOptions(**searchrequest.options)
-                p_sitename = geminiopts.sitename or parsed_url.netloc
-                label = (
-                    geminiopts.label
-                    or parsed_url._replace(params="", query="", fragment="").geturl()
-                )
-                try:
-                    sresults = await gemini_webscraper.parse_html_and_convert(
-                        html=result.searchcache.download_text,
-                        url=searchrequest.url,
-                        label=label,
-                        session=self.session,
-                        sitename=p_sitename,
-                        remove_duplicates=remove_duplicates,
-                        recreate=geminiopts.recreate_parser,
-                        exclude_script=geminiopts.exclude_script,
-                        compress_whitespace=geminiopts.compress_whitespace,
-                        prompt=geminiopts.prompt,
-                    )
-                except Exception as e:
-                    await upactlog.failed(
-                        id=tasklog_id,
-                        error_msg=f"parse error. {type(e).__name__}, {e}",
-                    )
-                    response = SearchResponse(
-                        error_msg=f"parse error. {type(e).__name__}, {e}",
-                        redirect_url=redirect_url,
-                    )
-                    return response
-
-                if not sresults:
-                    await upactlog.failed(
-                        id=tasklog_id,
-                        error_msg=f"parse error. sresults is None",
-                    )
-                    return SearchResponse(
-                        error_msg="parse error. sresults is None",
-                        redirect_url=redirect_url,
-                    )
-
-                response = SearchResponse(**sresults.model_dump())
-                response.redirect_url = redirect_url
-            case _:
+        ext_api_config = read_config.get_external_api_config().get("parser", {})
+        if sitename in ext_api_config:
+            try:
+                async with httpx.AsyncClient() as client:
+                    payload = {
+                        "html": result.searchcache.download_text,
+                        "url": searchrequest.url,
+                        "options": (
+                            searchrequest.options.model_dump(exclude_none=True)
+                            if hasattr(searchrequest.options, "model_dump")
+                            else searchrequest.options
+                        ),
+                    }
+                    resp = await client.post(ext_api_config[sitename], json=payload)
+                    resp.raise_for_status()
+                    response = SearchResponse(**resp.json())
+                    response.redirect_url = redirect_url
+            except Exception as e:
                 await upactlog.failed(
-                    id=tasklog_id,
-                    error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
+                    id=tasklog_id, error_msg=f"external parser error: {str(e)}"
                 )
                 return SearchResponse(
-                    error_msg=f"not supported domain : {parsed_url.netloc}",
+                    error_msg=f"external parser error: {str(e)}",
                     redirect_url=redirect_url,
                 )
+        else:
+            match sitename:
+                case SupportedSiteName.SOFMAP.value:
+                    parsed_result = await sofmap_scraper.parse_html(
+                        html=result.searchcache.download_text, url=searchrequest.url
+                    )
+                    sresults = sofmap_modelconvert.ModelConverter.parseresults_to_searchresults(
+                        results=parsed_result, remove_duplicates=remove_duplicates
+                    )
+                    response = SearchResponse(**sresults.model_dump())
+                    response.redirect_url = redirect_url
+                case SupportedSiteName.GEO.value:
+                    parsed_result = await geo_scraper.parse_html(
+                        html=result.searchcache.download_text, url=searchrequest.url
+                    )
+                    sresults = (
+                        geo_modelconvert.ModelConverter.parseresults_to_searchresults(
+                            results=parsed_result
+                        )
+                    )
+                    response = SearchResponse(**sresults.model_dump())
+                    response.redirect_url = redirect_url
+                case SupportedSiteName.IOSYS.value:
+                    parsed_result = await iosys_scraper.parse_html(
+                        html=result.searchcache.download_text, url=searchrequest.url
+                    )
+                    sresults = (
+                        iosys_modelconvert.ModelConverter.parseresults_to_searchresults(
+                            results=parsed_result
+                        )
+                    )
+                    response = SearchResponse(**sresults.model_dump())
+                    response.redirect_url = redirect_url
+                case SupportedSiteName.GEMINI.value:
+                    if isinstance(searchrequest.options, AskGeminiOptions):
+                        geminiopts = searchrequest.options
+                    else:
+                        geminiopts = AskGeminiOptions(**searchrequest.options)
+                    p_sitename = geminiopts.sitename or parsed_url.netloc
+                    label = (
+                        geminiopts.label
+                        or parsed_url._replace(
+                            params="", query="", fragment=""
+                        ).geturl()
+                    )
+                    try:
+                        sresults = await gemini_webscraper.parse_html_and_convert(
+                            html=result.searchcache.download_text,
+                            url=searchrequest.url,
+                            label=label,
+                            session=self.session,
+                            sitename=p_sitename,
+                            remove_duplicates=remove_duplicates,
+                            recreate=geminiopts.recreate_parser,
+                            exclude_script=geminiopts.exclude_script,
+                            compress_whitespace=geminiopts.compress_whitespace,
+                            prompt=geminiopts.prompt,
+                        )
+                    except Exception as e:
+                        await upactlog.failed(
+                            id=tasklog_id,
+                            error_msg=f"parse error. {type(e).__name__}, {e}",
+                        )
+                        response = SearchResponse(
+                            error_msg=f"parse error. {type(e).__name__}, {e}",
+                            redirect_url=redirect_url,
+                        )
+                        return response
+
+                    if not sresults:
+                        await upactlog.failed(
+                            id=tasklog_id,
+                            error_msg=f"parse error. sresults is None",
+                        )
+                        return SearchResponse(
+                            error_msg="parse error. sresults is None",
+                            redirect_url=redirect_url,
+                        )
+
+                    response = SearchResponse(**sresults.model_dump())
+                    response.redirect_url = redirect_url
+                case _:
+                    await upactlog.failed(
+                        id=tasklog_id,
+                        error_msg=f"parse error. not supported domain :{parsed_url.netloc}",
+                    )
+                    return SearchResponse(
+                        error_msg=f"not supported domain : {parsed_url.netloc}",
+                        redirect_url=redirect_url,
+                    )
 
         if not result.searchcache.id:
             cacheopts = read_config.get_cache_options()
@@ -381,52 +408,66 @@ class HTMLDownloader:
         redirect_url = None
         sitename = dlreq.sitename.lower()
 
-        match sitename:
-            case SupportedSiteName.SOFMAP.value:
-                if sofmap_urlgenerate.is_direct_search(url=target_url):
-                    ok, result = await sofmap_scraper.get_html(
-                        sofmap_scraper.GetCommandWithHttpx(
+        ext_api_config = read_config.get_external_api_config().get("downloader", {})
+        api_url = ext_api_config.get(sitename) or ext_api_config.get(parsed_url.netloc)
+        if api_url:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    api_url, json=dlreq.model_dump(exclude_none=True)
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                ok = True
+                result = data["html"]
+                redirect_url = data.get("redirect_url")
+                download_type = data.get("download_type", "EXTERNAL")
+        else:
+            match sitename:
+                case SupportedSiteName.SOFMAP.value:
+                    if sofmap_urlgenerate.is_direct_search(url=target_url):
+                        ok, result = await sofmap_scraper.get_html(
+                            sofmap_scraper.GetCommandWithHttpx(
+                                url=target_url,
+                                timeout=dl_waittimeopts.timeout_for_each_url,
+                                delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                                is_ucaa=not searchopts.safe_search,
+                            )
+                        )
+                        download_type = c_enums.DownloadType.HTTPX.value
+                    else:
+                        ok, result = await sofmap_tasks.async_download_sofmap(
+                            url=target_url
+                        )
+                        download_type = c_enums.DownloadType.SELENIUM.value
+                case SupportedSiteName.GEO.value:
+                    ok, result = await geo_tasks.async_download_geo(url=target_url)
+                    download_type = c_enums.DownloadType.SELENIUM.value
+                case SupportedSiteName.IOSYS.value:
+                    ok, result = await iosys_scraper.get_html(
+                        iosys_scraper.GetCommandWithHttpx(
                             url=target_url,
                             timeout=dl_waittimeopts.timeout_for_each_url,
                             delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
-                            is_ucaa=not searchopts.safe_search,
                         )
                     )
                     download_type = c_enums.DownloadType.HTTPX.value
-                else:
-                    ok, result = await sofmap_tasks.async_download_sofmap(
-                        url=target_url
+                case SupportedSiteName.GEMINI.value:
+                    ok, result, download_type, *option_data = (
+                        await self._download_html_for_gemini(
+                            converted_url=converted_url,
+                            dl_waittimeopts=dl_waittimeopts,
+                        )
                     )
-                    download_type = c_enums.DownloadType.SELENIUM.value
-            case SupportedSiteName.GEO.value:
-                ok, result = await geo_tasks.async_download_geo(url=target_url)
-                download_type = c_enums.DownloadType.SELENIUM.value
-            case SupportedSiteName.IOSYS.value:
-                ok, result = await iosys_scraper.get_html(
-                    iosys_scraper.GetCommandWithHttpx(
-                        url=target_url,
-                        timeout=dl_waittimeopts.timeout_for_each_url,
-                        delay_seconds=dl_waittimeopts.min_wait_time_of_dl,
+                    if option_data and option_data[0]:
+                        redirect_url = option_data[0]
+                case _:
+                    await domainrepo.save(
+                        domain=parsed_url.netloc,
+                        status=URLDomainStatus.FAILED.value,
                     )
-                )
-                download_type = c_enums.DownloadType.HTTPX.value
-            case SupportedSiteName.GEMINI.value:
-                ok, result, download_type, *option_data = (
-                    await self._download_html_for_gemini(
-                        converted_url=converted_url,
-                        dl_waittimeopts=dl_waittimeopts,
+                    return False, DownLoadResult(
+                        error_msg=f"not supported domain : {parsed_url.netloc}"
                     )
-                )
-                if option_data and option_data[0]:
-                    redirect_url = option_data[0]
-            case _:
-                await domainrepo.save(
-                    domain=parsed_url.netloc,
-                    status=URLDomainStatus.FAILED.value,
-                )
-                return False, DownLoadResult(
-                    error_msg=f"not supported domain : {parsed_url.netloc}"
-                )
 
         if not ok:
             await domainrepo.save(
@@ -584,7 +625,18 @@ class KeyWordToURL:
 
     async def execute(self) -> str:
         searchrequest: SearchRequest = self.searchrequest
-        match searchrequest.sitename.lower():
+        sitename = searchrequest.sitename.lower()
+        ext_api_config = read_config.get_external_api_config().get("url_generation", {})
+        if sitename in ext_api_config:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    ext_api_config[sitename],
+                    json=searchrequest.model_dump(exclude_none=True),
+                )
+                resp.raise_for_status()
+                return resp.json()["url"]
+
+        match sitename:
             case SupportedSiteName.SOFMAP.value:
                 return await self._build_sofmap_url(searchrequest)
             case SupportedSiteName.GEO.value:
@@ -592,9 +644,7 @@ class KeyWordToURL:
             case SupportedSiteName.IOSYS.value:
                 return await self._build_iosys_url(searchrequest)
             case _:
-                raise ValueError(
-                    f"not supported sitename : {searchrequest.sitename.lower()}"
-                )
+                raise ValueError(f"not supported sitename : {sitename}")
 
     async def _build_iosys_url(self, searchrequest: SearchRequest):
         params = {
