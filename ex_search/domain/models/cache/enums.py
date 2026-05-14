@@ -14,3 +14,4 @@ class DownloadType(AutoUpperName):
     HTTPX = auto()
     SELENIUM = auto()
     NODRIVER = auto()
+    EXTERNAL_API = auto()

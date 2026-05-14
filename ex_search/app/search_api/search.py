@@ -74,8 +74,10 @@ class SearchClient:
         searchrequest: SearchRequest = self.searchrequest
         upactlog = UpdateActivityLog(ses=self.session)
         init_subinfo = {"request": searchrequest.model_dump(exclude_none=True)}
-        if searchrequest.search_keyword and not searchrequest.url:
+        if searchrequest.search_keyword:
             urlgenerator = KeyWordToURL(ses=self.session, searchrequest=searchrequest)
+            if searchrequest.url:
+                init_subinfo["init_url"] = searchrequest.url
             try:
                 searchrequest.url = await urlgenerator.execute()
             except Exception as e:
@@ -175,7 +177,17 @@ class SearchClient:
 
         sitename = searchrequest.sitename.lower()
         ext_api_config = read_config.get_external_api_config().get("parser", {})
-        if sitename in ext_api_config:
+        if sitename == SupportedSiteName.GEMINI.value:
+            target_api = ext_api_config.get(parsed_url.netloc)
+        else:
+            target_api = ext_api_config.get(sitename) or ext_api_config.get(
+                parsed_url.netloc
+            )
+        if target_api and target_api.get("url"):
+            if target_api.get("timeout"):
+                timeout = target_api["timeout"]
+            else:
+                timeout = 10
             try:
                 async with httpx.AsyncClient() as client:
                     payload = {
@@ -187,16 +199,19 @@ class SearchClient:
                             else searchrequest.options
                         ),
                     }
-                    resp = await client.post(ext_api_config[sitename], json=payload)
+                    resp = await client.post(
+                        target_api["url"], json=payload, timeout=timeout
+                    )
                     resp.raise_for_status()
                     response = SearchResponse(**resp.json())
                     response.redirect_url = redirect_url
             except Exception as e:
                 await upactlog.failed(
-                    id=tasklog_id, error_msg=f"external parser error: {str(e)}"
+                    id=tasklog_id,
+                    error_msg=f"external parser error: {str(e)} error_type: {type(e).__name__} target_api: {target_api}",
                 )
                 return SearchResponse(
-                    error_msg=f"external parser error: {str(e)}",
+                    error_msg=f"external parser error: {str(e)} error_type: {type(e).__name__} target_api: {target_api}",
                     redirect_url=redirect_url,
                 )
         else:
@@ -409,18 +424,39 @@ class HTMLDownloader:
         sitename = dlreq.sitename.lower()
 
         ext_api_config = read_config.get_external_api_config().get("downloader", {})
-        api_url = ext_api_config.get(sitename) or ext_api_config.get(parsed_url.netloc)
-        if api_url:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    api_url, json=dlreq.model_dump(exclude_none=True)
+        if sitename == SupportedSiteName.GEMINI.value:
+            target_api = ext_api_config.get(parsed_url.netloc)
+        else:
+            target_api = ext_api_config.get(sitename) or ext_api_config.get(
+                parsed_url.netloc
+            )
+        if target_api and target_api.get("url"):
+            if target_api.get("timeout"):
+                timeout = target_api["timeout"]
+            else:
+                timeout = 30
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        target_api["url"],
+                        json=dlreq.model_dump(exclude_none=True),
+                        timeout=timeout,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    ok = True
+                    result = data["html"]
+                    redirect_url = data.get("redirect_url")
+                    download_type = data.get(
+                        "download_type", c_enums.DownloadType.EXTERNAL_API.value
+                    )
+            except Exception as e:
+                await domainrepo.save(
+                    domain=parsed_url.netloc, status=URLDomainStatus.FAILED.value
                 )
-                resp.raise_for_status()
-                data = resp.json()
-                ok = True
-                result = data["html"]
-                redirect_url = data.get("redirect_url")
-                download_type = data.get("download_type", "EXTERNAL")
+                return False, DownLoadResult(
+                    error_msg=f"external downloader error: {str(e)} error_type: {type(e).__name__} target_api: {target_api}"
+                )
         else:
             match sitename:
                 case SupportedSiteName.SOFMAP.value:
@@ -627,11 +663,28 @@ class KeyWordToURL:
         searchrequest: SearchRequest = self.searchrequest
         sitename = searchrequest.sitename.lower()
         ext_api_config = read_config.get_external_api_config().get("url_generation", {})
-        if sitename in ext_api_config:
+        if searchrequest.url:
+            parsed_url = urlparse(searchrequest.url)
+            if sitename == SupportedSiteName.GEMINI.value:
+                target_api = ext_api_config.get(parsed_url.netloc)
+            else:
+                target_api = ext_api_config.get(sitename) or ext_api_config.get(
+                    parsed_url.netloc
+                )
+        elif sitename != SupportedSiteName.GEMINI.value and sitename in ext_api_config:
+            target_api = ext_api_config[sitename]
+        else:
+            target_api = None
+        if target_api and target_api.get("url"):
+            if target_api.get("timeout"):
+                timeout = target_api["timeout"]
+            else:
+                timeout = 10
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
-                    ext_api_config[sitename],
+                    target_api["url"],
                     json=searchrequest.model_dump(exclude_none=True),
+                    timeout=timeout,
                 )
                 resp.raise_for_status()
                 return resp.json()["url"]

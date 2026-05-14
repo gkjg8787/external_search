@@ -50,3 +50,19 @@ MODEL_ESCALATION_LIST = [
     "gemini-2.5-flash",  # 〜2026/6/17
     "gemini-2.5-flash-lite",  # 〜2026/7/22
 ]
+# 設定例 (コメントアウトを外して適切なURLを設定してください):
+# EXTERNAL_API_CONFIG = {
+#     "url_generation": {
+#         # URL生成: リクエスト形式 SearchRequest -> レスポンス形式 {"url": "..."}
+#         "www.sofmap.com": {"url": "http://external-api-service/api/v1/generate-url/sofmap"},
+#     },
+#     "downloader": {
+#         # ダウンロード: リクエスト形式 DownloadRequest -> レスポンス形式 {"html": "...", "redirect_url": "...", "download_type": "..."}
+#         "www.sofmap.com": {"url": "http://external-api-service/api/v1/download", "timeout": 30},
+#         "geo-online.co.jp": {"url": "http://external-api-service/api/v1/download/geo", "timeout": 20},
+#     },
+#     "parser": {
+#         # パーサ: リクエスト形式 {"html": "...", "url": "...", "options": {...}} -> レスポンス形式 SearchResponse互換JSON
+#         "a.sofmap.com": {"url": "http://external-api-service/api/v1/parse/sofmap"},
+#     }
+# }

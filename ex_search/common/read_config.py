@@ -140,3 +140,12 @@ def get_cookie_dir_path():
 
 def get_model_escalation_list():
     return settings.MODEL_ESCALATION_LIST
+
+
+def get_external_api_config() -> dict:
+    """
+    settings.py から外部API連携の設定を取得します。
+    設定が存在しない場合は空の構成を返します。
+    """
+    default_config = {"url_generation": {}, "downloader": {}, "parser": {}}
+    return getattr(settings, "EXTERNAL_API_CONFIG", default_config)
