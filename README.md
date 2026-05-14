@@ -22,6 +22,7 @@
     - [gemini の検索オプション](#gemini-の検索オプション)
     - [gemini の検索例](#gemini-の検索例)
   - [ダウンロード設定の自動生成](#ダウンロード設定の自動生成)
+  - [外部API連携の設定](#外部API連携の設定)
 
 
 ## 対応サイト
@@ -451,6 +452,40 @@ curl -X 'POST' \
 | init_nodriver_page_wait_time | nodriverを使用する場合のタイムアウト時間 | 秒数 or null | null |
 | strategy_order | 検索結果のHTMLの判定に使うロジックの優先順位。rule優先指定の場合、AIは使用しない。記述方法はlist型。優先する順に記述。 | ["ai", "rule"] | ["rule", "ai"] |
 
+
+
+[TOP](#概要)
+
+### 外部API連携の設定
+- スクレイピング処理（URL生成、HTML取得、解析）を外部のマイクロサービス等に委託する場合、EXTERNAL_API_CONFIG 変数を使用して接続先を設定します。
+#### 設定の概要
+- この設定は Python の dict 型で記述され、対象となるサイトの ドメインごと にエンドポイントやタイムアウト時間を指定します。
+
+```
+EXTERNAL_API_CONFIG = {
+    "url_generation": {
+        # URL生成: 検索条件から対象サイトのURLを構築するエンドポイント
+        "www.sofmap.com": {"url": "http://external-api-service/api/v1/generate-url/sofmap"},
+    },
+    "downloader": {
+        # ダウンロード: 指定したURLのHTMLコンテンツを取得するエンドポイント
+        "www.sofmap.com": {"url": "http://external-api-service/api/v1/download", "timeout": 30},
+        "geo-online.co.jp": {"url": "http://external-api-service/api/v1/download/geo", "timeout": 20},
+    },
+    "parser": {
+        # パーサ: HTML構造を解析して構造化データ(JSON)に変換するエンドポイント
+        "a.sofmap.com": {"url": "http://external-api-service/api/v1/parse/sofmap"},
+    }
+}
+```
+
+#### 各セクションの解説
+
+| セクション名   | 説明                | リクエスト形式 / レスポンス形式 | 
+| ---- | ---- | ---- |
+| url_generation	| 検索キーワードや条件から、対象サイトの検索結果URLを生成します。	|Req: SearchRequest<br>Res: {"url": "..."} |
+| downloader	| 外部プロキシやレンダリングエンジンを使用してHTMLを取得します。	|Req: DownloadRequest<br>Res: {"html": "...", "redirect_url": "...", "download_type": "..."}|
+|parser|	取得済みHTMLから商品情報などを抽出します。	|Req: {"html": "...", "url": "...", "options": {...}}<br>Res: SearchResponse 互換のJSON |
 
 
 [TOP](#概要)
