@@ -44,11 +44,11 @@ SEARCH_OPTIONS = {
 }
 COOKIE_DIR_PATH = f"{BASE_DIR}/cookies/"
 MODEL_ESCALATION_LIST = [
-    "gemini-3-flash-preview",
-    "gemini-2.5-pro",  # 〜2026/6/17
-    "gemini-3.1-flash-lite-preview",
-    "gemini-2.5-flash",  # 〜2026/6/17
-    "gemini-2.5-flash-lite",  # 〜2026/7/22
+    "gemini-3.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
 ]
 # 設定例 (コメントアウトを外して適切なURLを設定してください):
 # EXTERNAL_API_CONFIG = {
