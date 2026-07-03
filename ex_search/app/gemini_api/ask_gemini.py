@@ -2,6 +2,11 @@ import json
 import re
 import pathlib
 import inspect
+import ast
+import os
+import multiprocessing
+import asyncio
+import traceback
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from google import genai
@@ -28,6 +33,142 @@ MODEL_ESCALATION_LIST = get_model_escalation_list()
 CLASS_NAME_PATTERN = re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]")
 IMPORT_PATTERN = re.compile(r"(?:from\s+(\S+)\s+import\s+(\S+))|(?:import\s+(\S+))")
 CURRENT_PATH = pathlib.Path(__file__).resolve().parent
+
+
+def is_safe_code(code: str) -> tuple[bool, str | None]:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, f"Syntax error: {e}"
+
+    allowed_modules = {"bs4", "lxml", "re", "json", "datetime", "typing", "collections", "math", "urllib"}
+    dangerous_functions = {"eval", "exec", "open", "compile", "__import__", "globals", "locals", "getattr", "setattr", "delattr", "input"}
+
+    for node in ast.walk(tree):
+        # 1. Check imports
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top_level = alias.name.split('.')[0]
+                if top_level not in allowed_modules:
+                    return False, f"Import of module '{alias.name}' is not allowed."
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                top_level = node.module.split('.')[0]
+                if top_level not in allowed_modules:
+                    return False, f"Import from module '{node.module}' is not allowed."
+            else:
+                return False, "Relative imports are not allowed."
+
+        # 2. Check function calls
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id in dangerous_functions:
+                    return False, f"Call to function '{node.func.id}' is not allowed."
+            elif isinstance(node.func, ast.Attribute):
+                if node.func.attr in dangerous_functions:
+                    return False, f"Call to attribute '{node.func.attr}' is not allowed."
+
+        # 3. Check dangerous name access
+        if isinstance(node, ast.Name):
+            if node.id in ("__builtins__", "builtins"):
+                return False, f"Access to '{node.id}' is not allowed."
+
+        # 4. Check dangerous attribute access
+        if isinstance(node, ast.Attribute):
+            if node.attr.startswith("__") and node.attr not in {"__init__", "__name__", "__annotations__"}:
+                return False, f"Access to attribute '{node.attr}' is not allowed."
+                
+    return True, None
+
+
+def _sandbox_worker(code: str, html_str: str, queue: multiprocessing.Queue):
+    try:
+        # Enforce memory and CPU limits
+        try:
+            import resource
+            mem_limit = 512 * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
+            resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
+        except (ImportError, ValueError, OSError):
+            pass
+
+        # Drop privileges
+        try:
+            if os.name == 'posix' and os.getuid() == 0:
+                import pwd
+                nobody = pwd.getpwnam('nobody')
+                nobody_uid = nobody.pw_uid
+                nobody_gid = nobody.pw_gid
+                
+                os.setgroups([])
+                os.setgid(nobody_gid)
+                os.setuid(nobody_uid)
+                os.environ['USER'] = 'nobody'
+                os.environ['HOME'] = '/nonexistent'
+        except Exception:
+            pass
+
+        exec_scope = {}
+        exec(code, {"__builtins__": __builtins__}, exec_scope)
+
+        # Detect the parser class
+        class_name = None
+        cnames = CLASS_NAME_PATTERN.findall(code)
+        if cnames:
+            class_name = cnames[0]
+
+        if not class_name:
+            # Fallback scan
+            for k, v in exec_scope.items():
+                if inspect.isclass(v) and v.__module__ == '__main__':
+                    class_name = k
+                    break
+
+        if not class_name or class_name not in exec_scope:
+            raise ValueError("No parser class found in the generated code.")
+
+        parser_cls = exec_scope[class_name]
+        parser_instance = parser_cls(html_str)
+        parsed_result = parser_instance.execute()
+        
+        queue.put({"success": True, "data": parsed_result})
+    except Exception as e:
+        queue.put({
+            "success": False,
+            "error_type": type(e).__name__,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+
+def run_in_sandbox_sync(code: str, html_str: str, timeout: float) -> list:
+    ctx = multiprocessing.get_context("spawn")
+    q = ctx.Queue()
+    p = ctx.Process(target=_sandbox_worker, args=(code, html_str, q))
+    p.start()
+    
+    p.join(timeout=timeout)
+    
+    if p.is_alive():
+        p.terminate()
+        p.join()
+        raise TimeoutError(f"Code execution exceeded the timeout limit of {timeout} seconds.")
+        
+    if not q.empty():
+        result = q.get()
+        if result["success"]:
+            return result["data"]
+        else:
+            error_msg = result.get("error", "Unknown error inside sandbox.")
+            error_type = result.get("error_type", "RuntimeError")
+            raise RuntimeError(f"[{error_type}] {error_msg}")
+    else:
+        exitcode = p.exitcode
+        raise RuntimeError(f"Sandbox process terminated abnormally with exit code {exitcode}.")
+
+
+async def run_in_sandbox_async(code: str, html_str: str, timeout: float = 5.0) -> list:
+    return await asyncio.to_thread(run_in_sandbox_sync, code, html_str, timeout)
 
 
 class NoModelsAvailableError(Exception):
@@ -85,24 +226,24 @@ class ParserGenerator:
         subinfo = {}
 
         if self.recreate:
-            class_type = None
+            code_str = None
             subinfo["recreate"] = True
         else:
-            class_type, exec_scope = await self._get_saved_parser()
+            code_str = await self._get_saved_parser_code()
 
-        if class_type is None:
+        if code_str is None:
             client = genai.Client()
             result_dict = await self._request_parser(client=client)
             if isinstance(result_dict, AskGeminiErrorInfo):
                 return AskGeminiResult(error_info=result_dict)
             log = await self._save_log(response=result_dict, error_info=None)
-            class_type, exec_scope = await self._get_parser_class(result_dict)
+            code_str = self._extract_parser_code(result_dict)
         else:
             log = await self.update_parserlog.get_log(
                 label=self.label, target_url=self.target_url, is_error=False
             )
 
-        if class_type is None:
+        if code_str is None:
             error_info = AskGeminiErrorInfo(
                 error_type="NoClass", error="No class found"
             )
@@ -110,19 +251,20 @@ class ParserGenerator:
                 log_entry=log, error_info=error_info, add_subinfo=subinfo
             )
             return AskGeminiResult(error_info=error_info)
-        try:
-            for k, v in exec_scope.items():
-                if k == class_type.__name__:
-                    continue
-                if k in globals():
-                    continue
-                if k == "annotations":
-                    continue
-                globals()[k] = v
-                logger.debug(f"imported {k} to globals")
 
-            parser_instance = class_type(self.html_str)
-            parsed_result = parser_instance.execute()
+        # AST validation
+        is_safe, error_msg = is_safe_code(code_str)
+        if not is_safe:
+            error_info = AskGeminiErrorInfo(
+                error_type="SecurityError", error=f"Unsafe code block: {error_msg}"
+            )
+            await self.update_parserlog.update_log(
+                log_entry=log, error_info=error_info, add_subinfo=subinfo
+            )
+            return AskGeminiResult(error_info=error_info)
+
+        try:
+            parsed_result = await run_in_sandbox_async(code_str, self.html_str)
             if not isinstance(parsed_result, list):
                 raise ValueError(
                     f"parsed_result is not list, type:{type(parsed_result).__name__}, value:{parsed_result}"
@@ -136,14 +278,14 @@ class ParserGenerator:
             )
             return AskGeminiResult(error_info=error_info)
 
-    async def _get_saved_parser(self):
+    async def _get_saved_parser_code(self) -> str | None:
         latest_log = await self.update_parserlog.get_log(
             label=self.label, target_url=self.target_url, is_error=False
         )
         if not latest_log:
-            return None, {}
+            return None
 
-        return await self._get_parser_class(latest_log.response)
+        return self._extract_parser_code(latest_log.response)
 
     async def _save_log(
         self, response: dict, error_info: None | AskGeminiErrorInfo, subinfo: dict = {}
@@ -185,27 +327,19 @@ class ParserGenerator:
             error="No models available or Escalation limit exceeded.",
         )
 
-    async def _get_parser_class(self, result: dict) -> tuple[type | None, dict]:
+    def _extract_parser_code(self, result: dict) -> str | None:
         if not result.get("candidates"):
             return None
 
         for part in result["candidates"][0]["content"]["parts"]:
-            if not part["text"] or "```python" not in part["text"]:
+            text = part.get("text")
+            if not text or "```python" not in text:
                 continue
-            lines = part["text"].splitlines()
+            lines = text.splitlines()
             trim_lines = lines[1:-1]
             new_part = "\n".join(["from __future__ import annotations"] + trim_lines)
-            exec_scope = {}
-            try:
-                exec(new_part, globals(), exec_scope)
-            except Exception:
-                logger.exception("parser exec error")
-                return None, {}
-            cname = CLASS_NAME_PATTERN.findall(new_part)[0]
-            MyClass = exec_scope.get(cname)
-            if MyClass is not None and inspect.isclass(MyClass):
-                return MyClass, exec_scope
-        return None, {}
+            return new_part
+        return None
 
 
 class ParserGeneratorForJSON:
@@ -239,24 +373,24 @@ class ParserGeneratorForJSON:
         subinfo = {}
 
         if self.recreate:
-            class_type = None
+            code_str = None
             subinfo["recreate"] = True
         else:
-            class_type, exec_scope = await self._get_saved_parser()
+            code_str = await self._get_saved_parser_code()
 
-        if class_type is None:
+        if code_str is None:
             client = genai.Client()
             result_dict = await self._request_parser(client=client)
             if isinstance(result_dict, AskGeminiErrorInfo):
                 return AskGeminiResult(error_info=result_dict)
             log = await self._save_log(response=result_dict, error_info=None)
-            class_type, exec_scope = await self._get_parser_class(result_dict)
+            code_str = self._extract_parser_code(result_dict)
         else:
             log = await self.update_parserlog.get_log(
                 label=self.label, target_url=self.target_url, is_error=False
             )
 
-        if class_type is None:
+        if code_str is None:
             error_info = AskGeminiErrorInfo(
                 error_type="NoClass", error="No class found"
             )
@@ -264,19 +398,20 @@ class ParserGeneratorForJSON:
                 log_entry=log, error_info=error_info, add_subinfo=subinfo
             )
             return AskGeminiResult(error_info=error_info)
-        try:
-            for k, v in exec_scope.items():
-                if k == class_type.__name__:
-                    continue
-                if k in globals():
-                    continue
-                if k == "annotations":
-                    continue
-                globals()[k] = v
-                logger.debug(f"imported {k} to globals")
 
-            parser_instance = class_type(self.html_str)
-            parsed_result = parser_instance.execute()
+        # AST validation
+        is_safe, error_msg = is_safe_code(code_str)
+        if not is_safe:
+            error_info = AskGeminiErrorInfo(
+                error_type="SecurityError", error=f"Unsafe code block: {error_msg}"
+            )
+            await self.update_parserlog.update_log(
+                log_entry=log, error_info=error_info, add_subinfo=subinfo
+            )
+            return AskGeminiResult(error_info=error_info)
+
+        try:
+            parsed_result = await run_in_sandbox_async(code_str, self.html_str)
             if not isinstance(parsed_result, list):
                 raise ValueError(
                     f"parsed_result is not list, type:{type(parsed_result).__name__}, value:{parsed_result}"
@@ -290,14 +425,14 @@ class ParserGeneratorForJSON:
             )
             return AskGeminiResult(error_info=error_info)
 
-    async def _get_saved_parser(self):
+    async def _get_saved_parser_code(self) -> str | None:
         latest_log = await self.update_parserlog.get_log(
             label=self.label, target_url=self.target_url, is_error=False
         )
         if not latest_log:
-            return None, {}
+            return None
 
-        return await self._get_parser_class(latest_log.response)
+        return self._extract_parser_code(latest_log.response)
 
     async def _save_log(
         self, response: dict, error_info: None | AskGeminiErrorInfo, subinfo: dict = {}
@@ -339,27 +474,19 @@ class ParserGeneratorForJSON:
             error="No models available or Escalation limit exceeded.",
         )
 
-    async def _get_parser_class(self, result: dict) -> tuple[type | None, dict]:
+    def _extract_parser_code(self, result: dict) -> str | None:
         if not result.get("candidates"):
             return None
 
         for part in result["candidates"][0]["content"]["parts"]:
-            if not part["text"] or "```python" not in part["text"]:
+            text = part.get("text")
+            if not text or "```python" not in text:
                 continue
-            lines = part["text"].splitlines()
+            lines = text.splitlines()
             trim_lines = lines[1:-1]
             new_part = "\n".join(["from __future__ import annotations"] + trim_lines)
-            exec_scope = {}
-            try:
-                exec(new_part, globals(), exec_scope)
-            except Exception:
-                logger.exception("parser exec error")
-                return None, {}
-            cname = CLASS_NAME_PATTERN.findall(new_part)[0]
-            MyClass = exec_scope.get(cname)
-            if MyClass is not None and inspect.isclass(MyClass):
-                return MyClass, exec_scope
-        return None, {}
+            return new_part
+        return None
 
 
 class HTMLSelectorConfigGenerator:
