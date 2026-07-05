@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from bs4 import BeautifulSoup, Comment
 import re
+import structlog
 
 from app.downloader import download_remotely, async_get
 from app.downloader import dl_with_nodriver_api as nodriver_api
@@ -10,6 +11,8 @@ from .model_convert import ModelConverter
 from domain.schemas.search import search
 from domain.models.ai import repository as m_ia_repo
 from databases.sql.ai import repository as ai_repo
+
+logger = structlog.get_logger(__name__)
 
 
 class GetCommandWithSelenium(BaseModel):
@@ -164,6 +167,13 @@ async def _parse_html(
         prompt=parserprompt,
     )
     result = await sparser.execute()
+    if result.error_info:
+        logger.warning(
+            "ParserGeneratorForJSON error",
+            error_type=result.error_info.error_type,
+            error_msg=result.error_info.error,
+        )
+
     return result.parsed_result
 
 
