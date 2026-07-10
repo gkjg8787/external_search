@@ -33,3 +33,17 @@ class DownloadConfigGenerationLog(SQLBase, table=True):
     meta: dict = Field(
         default_factory=dict, sa_column=Column(MutableDict.as_mutable(JSON))
     )
+
+
+class CodeValidationErrors(SQLBase, table=True):
+    label: str = Field(index=True)
+    target_url: str
+    raw_input_code: str
+    error_type: str
+    error_details: dict | None = Field(
+        default=None, sa_column=Column(MutableDict.as_mutable(JSON(none_as_null=True)))
+    )
+    ai_model_version: str
+    meta: dict = Field(
+        default_factory=dict, sa_column=Column(MutableDict.as_mutable(JSON))
+    )

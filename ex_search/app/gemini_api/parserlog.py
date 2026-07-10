@@ -83,3 +83,53 @@ class UpdateParserLog:
         await self.repository.save_all([log_entry])
         await self.session.refresh(log_entry)
         return log_entry
+
+
+class UpdateCodeValidationErrorsLog:
+    session: AsyncSession
+    repository: a_repo.ICodeValidationErrorsRepository
+
+    def __init__(self, ses: AsyncSession, repo: a_repo.ICodeValidationErrorsRepository):
+        self.session = ses
+        self.repository = repo
+
+    async def save_log(
+        self,
+        label: str,
+        target_url: str,
+        raw_input_code: str,
+        error_type: str,
+        error_details: None | dict = None,
+        ai_model_version: str = "",
+        subinfo: dict = {},
+    ) -> m_ailog.CodeValidationErrors:
+        log_entry = m_ailog.CodeValidationErrors(
+            label=label,
+            target_url=target_url,
+            raw_input_code=raw_input_code,
+            error_type=error_type,
+            error_details=error_details,
+            ai_model_version=ai_model_version,
+            meta=subinfo,
+        )
+        await self.repository.save(log_entry)
+        await self.session.refresh(log_entry)
+        return log_entry
+
+    async def get_log(
+        self,
+        id: int | None = None,
+        label: str = "",
+        target_url: str = "",
+        error_type: str | None = None,
+        ai_model_version: str | None = None,
+    ) -> list[m_ailog.CodeValidationErrors]:
+        command = a_cmd.CodeValidationErrorsGetCommand(
+            id=id,
+            label=label,
+            target_url=target_url,
+            error_type=error_type,
+            ai_model_version=ai_model_version,
+        )
+        log_entries = await self.repository.get(command=command)
+        return log_entries

@@ -84,3 +84,49 @@ class DownloadConfigGenerationLogRepository(
         await self.session.commit()
         await self.session.refresh(log_entry)
         return log_entry
+
+
+class CodeValidationErrorsRepository(a_repo.ICodeValidationErrorsRepository):
+    session: AsyncSession
+
+    def __init__(self, ses: AsyncSession):
+        self.session = ses
+
+    async def save(self, log_entry: m_ailog.CodeValidationErrors):
+        self.session.add(log_entry)
+        await self.session.commit()
+        await self.session.refresh(log_entry)
+        return log_entry
+
+    async def get(
+        self, command: a_cmd.CodeValidationErrorsGetCommand
+    ) -> list[m_ailog.CodeValidationErrors]:
+        stmt = select(m_ailog.CodeValidationErrors)
+        if command.id:
+            stmt = stmt.where(m_ailog.CodeValidationErrors.id == command.id)
+        if command.label:
+            stmt = stmt.where(m_ailog.CodeValidationErrors.label == command.label)
+        if command.target_url:
+            stmt = stmt.where(
+                m_ailog.CodeValidationErrors.target_url == command.target_url
+            )
+        if command.updated_at_start:
+            stmt = stmt.where(
+                m_ailog.CodeValidationErrors.updated_at >= command.updated_at_start
+            )
+        if command.updated_at_end:
+            stmt = stmt.where(
+                m_ailog.CodeValidationErrors.updated_at <= command.updated_at_end
+            )
+        if command.error_type:
+            stmt = stmt.where(
+                m_ailog.CodeValidationErrors.error_type == command.error_type
+            )
+        if command.ai_model_version:
+            stmt = stmt.where(
+                m_ailog.CodeValidationErrors.ai_model_version
+                == command.ai_model_version
+            )
+        stmt = stmt.order_by(m_ailog.CodeValidationErrors.id.desc())
+        res = await self.session.execute(stmt)
+        return res.scalars().all()

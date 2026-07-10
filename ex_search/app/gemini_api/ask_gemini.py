@@ -22,7 +22,7 @@ from .models import (
     ResultItems,
     HTMLConfigSearchResult,
 )
-from .parserlog import UpdateParserLog
+from .parserlog import UpdateCodeValidationErrorsLog, UpdateParserLog
 from domain.models.ai import repository as a_repo
 from common.read_config import get_model_escalation_list
 
@@ -61,7 +61,6 @@ def is_safe_code(code: str) -> tuple[bool, str | None]:
         "eval",
         "exec",
         "open",
-        "compile",
         "__import__",
         "globals",
         "locals",
@@ -86,7 +85,6 @@ def is_safe_code(code: str) -> tuple[bool, str | None]:
                 return False, error_msg
         elif isinstance(node, ast.ImportFrom):
             if node.module:
-
                 for alias in node.names:
                     if (node.module, alias.name) in allowed_from_imports:
                         continue
@@ -102,6 +100,8 @@ def is_safe_code(code: str) -> tuple[bool, str | None]:
         # 2. Check function calls
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
+                if node.func.id == "compile":
+                    return False, "Built-in function 'compile' is not allowed."
                 if node.func.id in dangerous_functions:
                     return False, f"Call to function '{node.func.id}' is not allowed."
             elif isinstance(node.func, ast.Attribute):
@@ -276,6 +276,7 @@ class ParserGeneratorForJSON:
     html_str: str
     label: str
     update_parserlog: UpdateParserLog
+    update_errorcodelog: UpdateCodeValidationErrorsLog
     prompt: ParserRequestPrompt
     target_url: str = ""
     recreate: bool = False
@@ -286,6 +287,7 @@ class ParserGeneratorForJSON:
         label: str,
         session: AsyncSession,
         parserlog_repository: a_repo.IParserGenerationLogRepository,
+        errorcodelog_repository: a_repo.ICodeValidationErrorsRepository,
         url: str = "",
         prompt: ParserRequestPrompt = ParserRequestPrompt(
             first_prompt_fpath=str(CURRENT_PATH / "create_parser_json.prompt")
@@ -295,6 +297,9 @@ class ParserGeneratorForJSON:
         self.html_str = html_str
         self.label = label
         self.update_parserlog = UpdateParserLog(session, parserlog_repository)
+        self.update_errorcodelog = UpdateCodeValidationErrorsLog(
+            session, errorcodelog_repository
+        )
         self.target_url = url
         self.prompt = prompt
         self.recreate = recreate
@@ -337,6 +342,13 @@ class ParserGeneratorForJSON:
             )
             await self.update_parserlog.update_log(
                 log_entry=log, error_info=error_info, add_subinfo=subinfo
+            )
+            await self.update_errorcodelog.save_log(
+                label=self.label,
+                target_url=self.target_url,
+                raw_input_code=code_str,
+                error_type="SecurityError",
+                error_details={"message": error_msg},
             )
             return AskGeminiResult(error_info=error_info)
 

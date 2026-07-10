@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
-from .ailog import ParserGenerationLog, DownloadConfigGenerationLog
-from .command import ParserGenerationLogGetCommand
+from .ailog import (
+    ParserGenerationLog,
+    DownloadConfigGenerationLog,
+    CodeValidationErrors,
+)
+from .command import ParserGenerationLogGetCommand, CodeValidationErrorsGetCommand
 
 
 class IParserGenerationLogRepository(ABC):
@@ -18,4 +22,16 @@ class IParserGenerationLogRepository(ABC):
 class IDownloadConfigGenerationLogRepository(ABC):
     @abstractmethod
     async def save(self, log_entry: DownloadConfigGenerationLog):
+        pass
+
+
+class ICodeValidationErrorsRepository(ABC):
+    @abstractmethod
+    async def save(self, log_entry: CodeValidationErrors):
+        pass
+
+    @abstractmethod
+    async def get(
+        self, command: CodeValidationErrorsGetCommand
+    ) -> list[CodeValidationErrors]:
         pass
