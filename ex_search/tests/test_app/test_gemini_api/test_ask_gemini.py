@@ -35,6 +35,19 @@ def test_dangerous_functions():
     assert is_safe_code(code)[0] is False
 
 
+def test_compile_behavior():
+    # 1. 許可されるケース: re.compile は利用可能であるべき
+    code_safe = "import re; re.compile(r'pattern')"
+    is_safe, message = is_safe_code(code_safe)
+    assert is_safe is True
+
+    # 2. 禁止されるケース: 組み込みの compile() はブロックされるべき
+    code_blocked = "compile('print(1)', '<string>', 'exec')"
+    is_safe, message = is_safe_code(code_blocked)
+    assert is_safe is False
+    assert "Built-in function 'compile' is not allowed" in message
+
+
 def test_attribute_access():
     # 危険な組み込み属性の制限
     code = "obj.__class__"
