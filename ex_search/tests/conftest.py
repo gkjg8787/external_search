@@ -18,12 +18,11 @@ from databases.sql.util import get_async_session
 @pytest.fixture(scope="session")
 async def test_db():
     ASYNC_TEST_DB_URL = URL.create(**DATABASES["a_sync"])
-    SYNC_TEST_DB_URL = URL.create(**DATABASES["sync"])
     is_echo = False
     async_engine = create_async_engine(ASYNC_TEST_DB_URL, echo=is_echo)
-    engine = create_engine(SYNC_TEST_DB_URL, echo=is_echo)
-    SQLModel.metadata.drop_all(engine)
-    SQLModel.metadata.create_all(engine)
+    async with async_engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.drop_all)
+        await conn.run_sync(SQLModel.metadata.create_all)
 
     TestingSessionLocal = async_sessionmaker(
         autocommit=False, autoflush=False, bind=async_engine

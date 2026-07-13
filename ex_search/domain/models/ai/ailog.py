@@ -43,7 +43,7 @@ class CodeValidationErrors(SQLBase, table=True):
     error_details: dict | None = Field(
         default=None, sa_column=Column(MutableDict.as_mutable(JSON(none_as_null=True)))
     )
-    ai_model_version: str
+    ai_model_version: str = ""
     meta: dict = Field(
         default_factory=dict, sa_column=Column(MutableDict.as_mutable(JSON))
     )
