@@ -40,6 +40,10 @@ class GetCommandWithNodriver(GetCommandWithHttpx):
     max_retries: int = 0
 
 
+class ParseError(Exception):
+    pass
+
+
 async def get_html_with_nodriver_api(command: GetCommandWithNodriver):
     try:
         result = await nodriver_api.get_from_nodriver_api(
@@ -168,15 +172,7 @@ async def _parse_html(
         recreate=recreate,
         prompt=parserprompt,
     )
-    result = await sparser.execute()
-    if result.error_info:
-        logger.warning(
-            "ParserGeneratorForJSON error",
-            error_type=result.error_info.error_type,
-            error_msg=result.error_info.error,
-        )
-
-    return result.parsed_result
+    return await sparser.execute()
 
 
 async def parse_html_and_convert(
@@ -191,7 +187,7 @@ async def parse_html_and_convert(
     compress_whitespace: bool = False,
     prompt: search.PromptOptions | None = None,
 ) -> search.SearchResults | None:
-    parsed_result = await _parse_html(
+    result = await _parse_html(
         html=html,
         url=url,
         label=label,
@@ -203,10 +199,20 @@ async def parse_html_and_convert(
         compress_whitespace=compress_whitespace,
         promptopts=prompt,
     )
-    if not parsed_result:
+    if result.error_info:
+        logger.warning(
+            "ParserGeneratorForJSON error",
+            error_type=result.error_info.error_type,
+            error_msg=result.error_info.error,
+            ai_model_version=result.error_info.ai_model_version,
+        )
+        raise ParseError(
+            f"parse error, type:{result.error_info.error_type}, message:{result.error_info.error}, ai_model_version:{result.error_info.ai_model_version}"
+        )
+    if not result.parsed_result:
         return None
     searchresults = ModelConverter.resultitems_to_searchresults(
-        results=parsed_result,
+        results=result.parsed_result,
         sitename=sitename,
         url=url,
         remove_duplicates=remove_duplicates,

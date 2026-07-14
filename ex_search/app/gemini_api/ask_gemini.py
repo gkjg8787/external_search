@@ -315,10 +315,14 @@ class ParserGeneratorForJSON:
 
         if code_str is None:
             client = genai.Client()
-            result_dict = await self._request_parser(client=client)
+            result_dict, ai_model = await self._request_parser(client=client)
             if isinstance(result_dict, AskGeminiErrorInfo):
                 return AskGeminiResult(error_info=result_dict)
-            log = await self._save_log(response=result_dict, error_info=None)
+            if ai_model:
+                subinfo["ai_model_version"] = ai_model
+            log = await self._save_log(
+                response=result_dict, error_info=None, subinfo=subinfo
+            )
             code_str = self._extract_parser_code(result_dict)
         else:
             log = await self.update_parserlog.get_log(
@@ -329,6 +333,8 @@ class ParserGeneratorForJSON:
             error_info = AskGeminiErrorInfo(
                 error_type="NoClass", error="No class found"
             )
+            if subinfo.get("ai_model_version"):
+                error_info.ai_model_version = subinfo["ai_model_version"]
             await self.update_parserlog.update_log(
                 log_entry=log, error_info=error_info, add_subinfo=subinfo
             )
@@ -340,6 +346,8 @@ class ParserGeneratorForJSON:
             error_info = AskGeminiErrorInfo(
                 error_type="SecurityError", error=f"Unsafe code block: {error_msg}"
             )
+            if subinfo.get("ai_model_version"):
+                error_info.ai_model_version = subinfo["ai_model_version"]
             await self.update_parserlog.update_log(
                 log_entry=log, error_info=error_info, add_subinfo=subinfo
             )
@@ -362,6 +370,8 @@ class ParserGeneratorForJSON:
             return askresult
         except Exception as e:
             error_info = AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
+            if subinfo.get("ai_model_version"):
+                error_info.ai_model_version = subinfo["ai_model_version"]
             await self.update_parserlog.update_log(
                 log_entry=log, error_info=error_info, add_subinfo=subinfo
             )
@@ -392,7 +402,10 @@ class ParserGeneratorForJSON:
     async def _request_parser(self, client: genai.Client):
         first_prompt = self.prompt.get_prompt()
         if not first_prompt:
-            return AskGeminiErrorInfo(error_type="NoPrompt", error="No first prompt")
+            return (
+                AskGeminiErrorInfo(error_type="NoPrompt", error="No first prompt"),
+                None,
+            )
         json_str = json.dumps(html_to_minimal_dict(self.html_str), ensure_ascii=False)
         contents = [
             types.Part.from_text(text=json_str),
@@ -403,17 +416,34 @@ class ParserGeneratorForJSON:
                 response = await client.aio.models.generate_content(
                     model=gmodel, contents=contents
                 )
-                return response.model_dump(mode="json")
+                return response.model_dump(mode="json"), gmodel
             except errors.APIError as e:
                 if e.code == 429:
                     logger.warning(f"Escalte from {gmodel} to the next model")
                     continue
-                return AskGeminiErrorInfo(error_type=type(e).__name__, error=e.message)
+                return (
+                    AskGeminiErrorInfo(
+                        error_type=type(e).__name__,
+                        error=e.message,
+                        ai_model_version=gmodel,
+                    ),
+                    gmodel,
+                )
             except Exception as e:
-                return AskGeminiErrorInfo(error_type=type(e).__name__, error=str(e))
-        return AskGeminiErrorInfo(
-            error_type=NoModelsAvailableError.__name__,
-            error="No models available or Escalation limit exceeded.",
+                return (
+                    AskGeminiErrorInfo(
+                        error_type=type(e).__name__,
+                        error=str(e),
+                        ai_model_version=gmodel,
+                    ),
+                    gmodel,
+                )
+        return (
+            AskGeminiErrorInfo(
+                error_type=NoModelsAvailableError.__name__,
+                error="No models available or Escalation limit exceeded.",
+            ),
+            None,
         )
 
     def _extract_parser_code(self, result: dict) -> str | None:
