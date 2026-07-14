@@ -2,9 +2,17 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class AskGeminiErrorInfo(BaseModel):
+class BasicErrorInfo(BaseModel):
     error_type: str
     error: str
+
+
+class DownloadConfigGeneratorError(BasicErrorInfo):
+    pass
+
+
+class AskGeminiErrorInfo(BasicErrorInfo):
+    ai_model_version: str | None = None
 
 
 class ResultItem(BaseModel):

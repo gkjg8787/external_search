@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.gemini_api.models import HTMLConfigSearchResult, AskGeminiErrorInfo
+from app.gemini_api.models import HTMLConfigSearchResult, DownloadConfigGeneratorError
 from app.gemini_api.ask_gemini import (
     NoModelsAvailableError,
     HTMLSelectorConfigGeneratorForJSON,
@@ -111,7 +111,7 @@ async def get_download_config_pattern(
     search_word: str,
     search_pattern_config: SearchPatternConfig,
     db: AsyncSession,
-) -> DownloadConfigResult | AskGeminiErrorInfo:
+) -> DownloadConfigResult | DownloadConfigGeneratorError:
     workflow_config = {
         "basic_nodriver": {
             "nodriver": {
@@ -229,7 +229,9 @@ async def get_download_config_pattern(
                     redirect_url=redirect_url,
                 )
             if not ok or isinstance(result, str):
-                err = AskGeminiErrorInfo(error=result, error_type="DownloadError")
+                err = DownloadConfigGeneratorError(
+                    error=result, error_type="DownloadError"
+                )
                 await _save_log({}, err.model_dump(), {})
                 current_preset = preset["error"]
                 continue
@@ -252,13 +254,15 @@ async def get_download_config_pattern(
                 )
             )
             if not ok or not html_str:
-                err = AskGeminiErrorInfo(error=html_str, error_type="DownloadError")
+                err = DownloadConfigGeneratorError(
+                    error=html_str, error_type="DownloadError"
+                )
                 await _save_log({}, err.model_dump(), {})
                 current_preset = preset["error"]
                 continue
         else:
             logger.error("invalid preset configuration")
-            return AskGeminiErrorInfo(
+            return DownloadConfigGeneratorError(
                 error="invalid preset configuration", error_type="ConfigError"
             )
 
@@ -281,7 +285,7 @@ async def get_download_config_pattern(
             )
             result = await generator.execute()
             if (
-                isinstance(result, AskGeminiErrorInfo)
+                isinstance(result, DownloadConfigGeneratorError)
                 and result.error_type == NoModelsAvailableError.__name__
                 and "rule" in strategy_order
             ):
@@ -329,7 +333,7 @@ async def get_download_config_pattern(
             logger.debug("optimized html selector config generated", preset=preset)
             await asyncio.sleep(CYCLE_WAIT_TIME)
             continue
-        if isinstance(result, AskGeminiErrorInfo):
+        if isinstance(result, DownloadConfigGeneratorError):
             if result.error_type == NoModelsAvailableError.__name__:
                 logger.error(
                     "no models available for html selector config generation",
@@ -360,7 +364,7 @@ async def get_download_config_pattern(
                 "unexpected result type from HTMLSelectorConfigGenerator",
                 result_type=type(result).__name__,
             )
-            err = AskGeminiErrorInfo(
+            err = DownloadConfigGeneratorError(
                 error_msg="unexpected error during html selector config generation"
             )
             await _save_log(last_execute_result, err.model_dump(), {})
@@ -373,7 +377,7 @@ async def get_download_config_pattern(
             return err
     if optimized_result is None:
         logger.warning("failed to generate any download config preset worked")
-        err = AskGeminiErrorInfo(
+        err = DownloadConfigGeneratorError(
             error="all download config presets failed to generate valid html selector config",
             error_type="NoValidConfig",
         )

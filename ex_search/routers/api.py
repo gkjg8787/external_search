@@ -24,7 +24,7 @@ from domain.schemas.search import (
 from app.search_api.search import SearchClient, HTMLDownloader
 from app.search_api.info import SearchInfo
 from app.downloadconfig import config_generator
-from app.gemini_api.models import AskGeminiErrorInfo
+from app.gemini_api.models import BasicErrorInfo
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -194,7 +194,7 @@ async def api_get_downloadconfig_generate(
         search_pattern_config=search_pattern_config,
         db=db,
     )
-    if isinstance(result, AskGeminiErrorInfo):
+    if isinstance(result, BasicErrorInfo):
         log.error(
             "DownloadConfig generation failed",
             error_msg=result.error,
